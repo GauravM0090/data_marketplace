@@ -12,6 +12,15 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    env:
+      # `.env` is git-ignored and never reaches this runner, but `npm ci`'s
+      # postinstall hook runs `prisma generate`, which needs DIRECT_URL to
+      # exist in prisma.config.ts — it just parses the schema, it never
+      # actually connects. A placeholder is enough; never put a real secret
+      # here. Our tests mock @/lib/prisma entirely, so DATABASE_URL isn't
+      # touched either, but it's set for the same reason in case that changes.
+      DIRECT_URL: postgresql://user:password@localhost:5432/db
+      DATABASE_URL: postgresql://user:password@localhost:5432/db
     steps:
       - uses: actions/checkout@v4
 
