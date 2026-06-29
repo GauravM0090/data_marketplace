@@ -1,0 +1,25 @@
+name: CI
+
+# Type checking and linting are already enforced by the Vercel preview build
+# (next build runs tsc + eslint and fails the deployment on either). This
+# workflow only covers what Vercel's build does NOT do: run the test suite.
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm test

@@ -1,0 +1,124 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─── Users ──────────────────────────────────────────────────
+model User {
+  id        String   @id @default(uuid()) // Supabase auth.users.id
+  email     String   @unique
+  fullName  String?  @map("full_name")
+  role      String   @default("user") // user | admin | seller
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  datasets  Dataset[]
+  orders    Order[]
+  downloads Download[]
+
+  @@map("users")
+}
+
+// ─── Datasets ───────────────────────────────────────────────
+model Dataset {
+  id            String   @id @default(uuid())
+  title         String
+  slug          String   @unique
+  description   String
+
+  industry      String?
+  category      String?
+  language      String?
+
+  tags          String[] @default([])
+
+  price         Decimal  @default(0) @db.Decimal(10, 2)
+  currency      String   @default("USD")
+
+  thumbnailUrl  String?  @map("thumbnail_url")
+  binaryUrl     String?  @map("binary_url")
+  sampleUrl     String?  @map("sample_url")
+
+  fileFormat    String?  @map("file_format")
+  fileSizeBytes BigInt?  @map("file_size_bytes")
+  rowCount      Int?     @map("row_count")
+
+  dodoProductId String?  @map("dodo_product_id")
+
+  // Dataset Owner
+uploadedByUserId String? @map("uploaded_by_user_id")
+
+uploadedBy User? @relation(fields: [uploadedByUserId], references: [id], onDelete: SetNull)
+
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  orders      Order[]
+  downloads   Download[]
+
+  @@index([industry])
+  @@index([category])
+  @@index([language])
+  @@index([uploadedByUserId])
+  @@index([tags], type: Gin)
+
+  @@map("datasets")
+}
+
+// ─── Orders ─────────────────────────────────────────────────
+model Order {
+  id            String    @id @default(uuid())
+
+  userId        String    @map("user_id")
+  datasetId     String    @map("dataset_id")
+
+  amount        Decimal   @db.Decimal(10, 2)
+  currency      String    @default("USD")
+
+  status        String    @default("pending")
+  // pending | paid | failed | refunded
+
+  dodoSessionId String?   @map("dodo_session_id")
+  dodoPaymentId String?   @map("dodo_payment_id")
+
+  createdAt     DateTime  @default(now()) @map("created_at")
+  paidAt        DateTime? @map("paid_at")
+
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  dataset       Dataset   @relation(fields: [datasetId], references: [id], onDelete: Cascade)
+
+  downloads     Download[]
+
+  @@index([userId])
+  @@index([datasetId])
+  @@index([status])
+
+  @@map("orders")
+}
+
+// ─── Downloads ──────────────────────────────────────────────
+model Download {
+  id           String   @id @default(uuid())
+
+  userId       String   @map("user_id")
+  datasetId    String   @map("dataset_id")
+  orderId      String   @map("order_id")
+
+  downloadedAt DateTime @default(now()) @map("downloaded_at")
+  ipAddress    String?  @map("ip_address")
+
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  dataset      Dataset  @relation(fields: [datasetId], references: [id], onDelete: Cascade)
+  order        Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([datasetId])
+  @@index([orderId])
+
+  @@map("downloads")
+}
