@@ -859,3 +859,29 @@ Datasets now go live instantly upon upload — no separate publish step is neede
 **Files changed:** `src/services/payment.service.ts`, `src/app/api/v1/datasets/route.ts`, `src/services/dataset.service.ts`, `src/app/(public)/datasets/[id]/page.tsx`, `src/app/api/v1/checkout/route.ts`, `prisma/seed.ts`, `prisma/schema/schema.prisma`, `prisma/migrations/20260626120000_remove_dataset_is_published/migration.sql`
 
 **Verified:** migration applied; `is_published` column confirmed absent from DB; `tsc --noEmit` + `eslint` clean; dev server restarted; all read paths (`GET /api/v1/datasets` → 200, `/datasets` → 200, `/datasets/[id]` → 200) and checkout (`POST /api/v1/checkout` unauthenticated → 401) working correctly.
+
+---
+
+## Session 5 — 2026-06-29
+
+### 28. Testing — Vitest + GitHub Actions CI
+
+**What was done:**
+- Added **Vitest** (`vitest.config.ts` resolves the `@/` alias to `src/`, matching `tsconfig.json`). Scripts: `npm test` (`vitest run`, used by CI), `npm run test:watch` (local dev).
+- Wrote the first 3 test files, colocated next to the code they test (15 tests total):
+  - `src/lib/slugify.test.ts` — lowercasing, punctuation stripping, whitespace collapsing, determinism.
+  - `src/lib/validations/checkout.schema.test.ts` — valid uuid passes; missing/invalid/empty `datasetId` rejected; extra client-supplied fields (e.g. a forged `amount`) are stripped, never trusted.
+  - `src/services/order.service.test.ts` — the highest-value one: mocks `@/lib/prisma` and pins the **webhook idempotency guard** — `markOrderPaid`/`markOrderFailed` must filter on `status: 'pending'` in their `updateMany` call, and a `count: 0` result (already-processed order, e.g. a retried Dodo webhook) must resolve quietly instead of throwing.
+- Added `.github/workflows/ci.yml` — runs on every push/PR to `main`: checkout → Node → `npm ci` → `npm test`. Deliberately doesn't duplicate `tsc`/`eslint`, since Vercel's `next build` already runs both and fails the deployment on either.
+
+**Bug found on the first real CI run (and fixed):** the very first push failed in ~30s, before any test ran. Root cause: `.env` is git-ignored (correctly — it holds real secrets), so it never reaches the GitHub Actions runner. `npm ci`'s `postinstall` hook runs `prisma generate`, which reads `prisma.config.ts` → `env("DIRECT_URL")` → throws `PrismaConfigEnvError` when the var doesn't exist at all, so `npm ci` itself failed — `npm test` never got a chance to run. Reproduced locally by temporarily hiding `.env` (verified restored byte-identical via `diff` afterward) to confirm the exact error before fixing it. Fix: added harmless **placeholder** `DIRECT_URL`/`DATABASE_URL` values (never a real secret — `prisma generate` only parses the schema, it doesn't connect) as job-level `env:` in `ci.yml`. Re-verified the full suite passes under the exact same no-`.env` conditions.
+
+**Node version aligned:** CI was pinned to Node 20 (the `setup-node@v4` default), which doesn't match local dev (`node -v` → v24.15.0) and was already flagged by GitHub as deprecated for Actions runners. Bumped `ci.yml` to `node-version: 24`. Also updated `docs/deployment-checklist.md`'s Vercel Node.js version line to say "matches local dev / CI" instead of a stale `20.x`, so all three environments are called out as needing to stay in sync.
+
+**Branch protection caveat discovered:** GitHub will create a branch protection rule requiring the CI status check, but won't *enforce* it (won't block the Merge button) on a private repo owned by an Organization unless the org is on a Team/Enterprise plan. Documented as a known limitation in `docs/deployment-checklist.md` — for now, the ❌/✅ on the PR is a manual gate rather than a hard block.
+
+**Files changed:** `vitest.config.ts` (new), `package.json` (added `vitest` devDependency + `test`/`test:watch` scripts), `src/lib/slugify.test.ts` (new), `src/lib/validations/checkout.schema.test.ts` (new), `src/services/order.service.test.ts` (new), `.github/workflows/ci.yml` (new), `docs/deployment-checklist.md` (new "CI/CD Pipeline" section + checklist updates).
+
+**Verified:** all 15 tests pass locally; `tsc --noEmit` + `eslint` clean on every new file; `npm ci --dry-run` confirms the lockfile is in sync; reproduced and fixed the real CI failure (confirmed via the same no-`.env` + placeholder-env-var conditions GitHub Actions runs under).
+
+**Not done yet:** no test exists for the upcoming user-onboarding feature (doesn't exist in the codebase yet) — tests for it should follow the same priority order established here: validation-schema boundaries first, then any new state-transition/idempotency logic, then route-level auth/status-code checks; skip testing UI rendering details or framework behavior.
