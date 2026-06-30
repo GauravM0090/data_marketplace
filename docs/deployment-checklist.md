@@ -143,7 +143,7 @@ If a deployment causes issues:
 3. Click **Promote to Production**
 4. If DB migrations were applied, assess whether a rollback migration is needed
 
----
+--- 
 
 ## Release Notes
 
