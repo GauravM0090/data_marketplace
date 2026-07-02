@@ -14,7 +14,7 @@ export interface DatasetCard {
   thumbnailUrl: string | null
 }
 
-// Query params + their validation now live in `@/lib/validations/dataset.schema`
+// Query params + their validation now live in `@/validations/dataset.schema`
 // (Zod is the single source of truth so the type can never drift from the
 // runtime checks enforced on GET /api/v1/datasets).
 

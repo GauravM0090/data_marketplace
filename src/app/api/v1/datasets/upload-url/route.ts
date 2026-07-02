@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from 'next/server'
 import { cookies } from 'next/headers'
 import { getSessionUser } from '@/services/auth.service'
 import { createDatasetUploadUrl } from '@/services/storage.service'
-import { uploadUrlSchema } from '@/lib/validations/dataset.schema'
+import { uploadUrlSchema } from '@/validations/dataset.schema'
 import { logger } from '@/lib/logger'
 
 /**

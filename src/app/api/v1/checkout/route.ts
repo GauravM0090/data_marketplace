@@ -4,7 +4,7 @@ import { getSessionUser } from '@/services/auth.service'
 import { getDatasetById } from '@/services/dataset.service'
 import { findPaidOrder, createPendingOrder, attachCheckoutSession } from '@/services/order.service'
 import { createCheckoutSession } from '@/services/payment.service'
-import { createCheckoutSchema } from '@/lib/validations/checkout.schema'
+import { createCheckoutSchema } from '@/validations/checkout.schema'
 import { logger } from '@/lib/logger'
 
 /**

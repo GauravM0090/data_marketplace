@@ -31,9 +31,15 @@
   npm run db:migrate:deploy
   # or: npx prisma migrate deploy
   ```
+  - [ ] Includes `..._user_updated_at_default` (DB default on `users.updated_at`)
 - [ ] `prisma generate` run against latest schema
 - [ ] No schema drift between local and production DB
 - [ ] RLS policies verified for all tables in Supabase Dashboard
+- [ ] **`handle_new_user` trigger exists on `auth.users`** in the prod project —
+  it creates the `public.users` row on signup and is **not** in the Prisma
+  migrations (created by hand in Supabase). Without it, signups don't get a
+  `users` row; without the `updated_at` default, the trigger throws a NOT NULL
+  error and signup returns a 500.
 
 ### 4. Supabase Setup
 
@@ -44,6 +50,11 @@
 - [ ] Auth URL Configuration updated:
   - Site URL: production domain
   - Redirect URLs: `https://yourdomain.com/**`
+- [ ] **Custom SMTP configured** (Auth → Emails → SMTP) and a test email sent —
+  required for the OTP flows (built-in email can't edit templates / is rate-limited)
+- [ ] **`{{ .Token }}` in the Confirm signup + Reset password templates** (so the
+  email contains the 6-digit code, not a link)
+- [ ] **Confirm email ON** (Auth → Providers → Email)
 - [ ] RLS enabled on all tables
 - [ ] Service role key not exposed in any client-side code
 
@@ -62,7 +73,8 @@ Run these manually after each deployment:
 - [ ] Landing page loads correctly at production URL
 - [ ] `/datasets` listing page loads with real data
 - [ ] Individual dataset detail page loads (`/datasets/[slug]`)
-- [ ] Sign up flow works (check email confirmation)
+- [ ] Sign up flow works — 6-digit OTP email arrives, code verifies, profile step saves/skips
+- [ ] Password reset flow works — recovery OTP email arrives and resets
 - [ ] Sign in flow works
 - [ ] Sign out works
 - [ ] Auth-protected routes (`/account/*`) redirect to login when unauthenticated

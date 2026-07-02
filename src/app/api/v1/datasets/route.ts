@@ -9,8 +9,8 @@ import {
   getStoredObject,
   getSamplePublicUrl,
 } from '@/services/storage.service'
-import { datasetsQuerySchema, createDatasetSchema } from '@/lib/validations/dataset.schema'
-import { slugify } from '@/lib/slugify'
+import { datasetsQuerySchema, createDatasetSchema } from '@/validations/dataset.schema'
+import { slugify } from '@/utils/slugify'
 import { prisma } from '@/lib/prisma'
 import { logger } from '@/lib/logger'
 

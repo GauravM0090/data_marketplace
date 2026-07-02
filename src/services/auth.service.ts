@@ -1,5 +1,5 @@
 import { type cookies } from 'next/headers'
-import { createClient } from '@/lib/supabse/server'
+import { createClient } from '@/lib/supabase/server'
 import { prisma } from '@/lib/prisma'
 import { logger } from '@/lib/logger'
 

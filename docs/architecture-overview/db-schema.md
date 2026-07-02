@@ -1,6 +1,6 @@
 # Database Schema — Dataset Marketplace
 
-> Last updated: 26 June 2026
+> Last updated: 30 June 2026
 
 All tables have **Row-Level Security (RLS) enabled** in Supabase PostgreSQL.
 
@@ -26,14 +26,25 @@ All tables have **Row-Level Security (RLS) enabled** in Supabase PostgreSQL.
 |---|---|---|
 | `id` | `uuid` PK | Mirrors `auth.users.id` |
 | `email` | `text` unique | |
-| `full_name` | `text` | |
-| `avatar_url` | `text` | Supabase Storage CDN URL |
-| `role` | `text` | `'user' \| 'seller' \| 'admin'`, default `'user'` |
-| `bio` | `text` | Optional — shown on seller/admin public profile |
-| `created_at` | `timestamptz` | |
-| `updated_at` | `timestamptz` | |
+| `full_name` | `text` | Defaults to the email prefix when the user skips profile setup |
+| `organization` | `text` nullable | Profile setup — company / university (optional/skippable) |
+| `job_title` | `text` nullable | Profile setup — self-described role e.g. "Project Manager". **NOT** the permission `role` below |
+| `role` | `text` | Permission role: `'user' \| 'seller' \| 'admin'`, default `'user'` |
+| `avatar_url` | `text` | _Planned — not yet in the Prisma schema_ |
+| `bio` | `text` | _Planned — not yet in the Prisma schema_ |
+| `created_at` | `timestamptz` | DB default `now()` |
+| `updated_at` | `timestamptz` | DB default `now()` (see note) + Prisma `@updatedAt` on app updates |
 
 **RLS Policy:** Users can read/update their own row only. Admin can read all.
+
+> **`handle_new_user` trigger + `updated_at` default:** a Supabase trigger on
+> `auth.users` INSERTs the matching `public.users` row on signup. Because that
+> INSERT happens **outside Prisma**, every column it omits must have a DB-level
+> default — so `updated_at` carries `@default(now())` in the Prisma schema
+> (migration `..._user_updated_at_default`). Without it the trigger throws a
+> NOT NULL violation and the whole signup transaction aborts (GoTrue returns a
+> 500 with an empty body). The trigger itself currently lives only in Supabase —
+> it is **not** captured in a Prisma migration yet.
 
 **Role capabilities:**
 

@@ -12,7 +12,7 @@
 
 import { createClient } from '@supabase/supabase-js'
 import { logger } from '@/lib/logger'
-import { slugify } from '@/lib/slugify'
+import { slugify } from '@/utils/slugify'
 
 // Service-role client: server-only, bypasses RLS so we can write to the private
 // binaries bucket and read object metadata. NEVER import this into client code.
