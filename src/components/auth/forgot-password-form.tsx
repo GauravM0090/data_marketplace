@@ -13,6 +13,8 @@ import { forgotPassword, verifyPasswordResetOtp } from '@/actions/auth.actions'
 import { useAuthModal } from '@/stores/auth-modal.store'
 import { z } from 'zod'
 
+import Image from 'next/image'
+
 const fieldBase =
   'h-12 rounded-lg border px-3 text-sm text-[#111111] outline-none transition-colors placeholder:text-[#A0A0A0]'
 
@@ -25,7 +27,7 @@ function Spinner() {
   )
 }
 
-type Step = 'email' | 'otp' | 'new-password'
+type Step = 'email' | 'otp' | 'new-password' | 'success'
 
 export function ForgotPasswordForm() {
   const { open, close } = useAuthModal()
@@ -35,6 +37,11 @@ export function ForgotPasswordForm() {
   const [email, setEmail] = useState('')
   const [otpToken, setOtpToken] = useState('')
 
+  if (step === 'success') {
+    return (
+      <SuccessStep onBackToLogin={() => { close(); open('sign-in') }} />
+    )
+  }
   if (step === 'otp') {
     return (
       <OtpStep
@@ -50,7 +57,7 @@ export function ForgotPasswordForm() {
       <NewPasswordStep
         email={email}
         token={otpToken}
-        onSuccess={() => { close(); router.refresh() }}
+        onSuccess={() => { router.refresh(); setStep('success') }}
       />
     )
   }
@@ -434,6 +441,42 @@ function NewPasswordStep({
           {isSubmitting ? 'Saving…' : 'Save password'}
         </button>
       </form>
+    </div>
+  )
+}
+
+// ─── Step 4: Password updated success ───────────────────────────────────
+function SuccessStep({ onBackToLogin }: { onBackToLogin: () => void }) {
+  return (
+    <div className="flex flex-col items-start gap-8">
+      {/* Reset illustration */}
+      <div className="flex w-full items-center justify-center overflow-hidden rounded-[9px]">
+        <Image
+          src="/password-reset/reset.png"
+          alt="Password updated"
+          width={407}
+          height={180}
+          className="h-[180px] w-full object-cover"
+          priority
+        />
+      </div>
+
+      {/* Copy */}
+      <div className="flex flex-col gap-1">
+        <h1 className="text-2xl font-semibold leading-8 text-[#111111]">Password Updated</h1>
+        <p className="text-xs leading-4 text-[#616161]">
+          Your new password is set. Sign in to get back into your account.
+        </p>
+      </div>
+
+      {/* Back to login */}
+      <button
+        type="button"
+        onClick={onBackToLogin}
+        className="flex h-12 w-full items-center justify-center rounded-lg bg-[#2563EB] text-base font-semibold text-white transition-all hover:bg-[#1d4fd7] active:scale-[0.99]"
+      >
+        Back to login
+      </button>
     </div>
   )
 }
