@@ -27,6 +27,7 @@ export default function RootLayout({
     <html
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+      data-scroll-behavior="smooth"
     >
       <body className="min-h-screen bg-[#0a0e1a] text-white font-[family-name:var(--font-geist-sans)]">
         <QueryProvider>{children}</QueryProvider>

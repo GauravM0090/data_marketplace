@@ -80,6 +80,16 @@ export async function createCheckoutSession(params: CreateCheckoutSessionParams)
       metadata: { orderId, userId, datasetId },
       return_url: returnUrl,
       cancel_url: cancelUrl,
+      allowed_payment_method_types: [
+        'upi_collect',
+        'upi_intent',
+        'credit',
+        'debit',
+        'klarna',
+        'afterpay_clearpay',
+        'billie',
+        'sunbit',
+      ],
     })
 
     logger.info(
