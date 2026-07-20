@@ -3,7 +3,7 @@ import { unstable_cache } from 'next/cache'
 import { prisma } from '@/lib/prisma'
 import { logger } from '@/lib/logger'
 import type { DatasetCard } from '@/types/dataset'
-import type { DatasetsQueryParams } from '@/lib/validations/dataset.schema'
+import type { DatasetsQueryParams } from '@/validations/dataset.schema'
 
 // Bust this tag (revalidateTag) whenever a dataset is published or edited so the
 // cached browse/list results below pick the change up immediately.

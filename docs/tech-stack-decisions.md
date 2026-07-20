@@ -19,6 +19,7 @@ Each decision includes: what was chosen, why it was chosen, what alternatives we
 | File Storage | Supabase Storage + CDN | June 2025 |
 | Server State | TanStack Query | June 2025 |
 | Client State | Zustand | June 2025 |
+| Forms & Validation | React Hook Form + Zod | June 2026 |
 | Payments | Dodo Payments | June 2025 (Future — Epic 3) |
 | Email | Nodemailer | June 2025 |
 | Logging | Pino | June 2025 |
@@ -151,6 +152,21 @@ retry: 2
 | **Date** | June 2025 |
 
 > **Rule:** TanStack Query for anything from the API/DB. Zustand for UI-only state that never touches the server. Never put server data in Zustand.
+
+---
+
+### Forms & Validation — React Hook Form + Zod
+
+| | |
+|---|---|
+| **Decision** | React Hook Form (`react-hook-form`) + `@hookform/resolvers/zod`, schemas in `src/validations/*.schema.ts` |
+| **Why** | The Zod schema is the single source of truth for both the client form and the server action. RHF removes per-field `useState`/manual `validate()`/error-mapping boilerplate, uses uncontrolled inputs (fewer re-renders), and gives `formState.errors`, `isSubmitting`, and `setError('field'\|'root')` for server/OAuth errors out of the box. |
+| **Alternatives** | Formik (heavier, more re-renders), manual `useState` + `safeParse` (boilerplate per form) |
+| **Date** | June 2026 |
+
+> **Pattern:** `useForm({ resolver: zodResolver(schema) })` → `register('field')` →
+> `errors.field?.message`. Reference: `src/components/auth/sign-in-form.tsx`. Error
+> message strings live in the schema so client + server validation stay in sync.
 
 ---
 

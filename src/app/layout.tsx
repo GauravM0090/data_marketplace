@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
-import { QueryProvider } from "@/components/providers/query-provider";
+import { Providers } from "./providers";
+import { AuthModal } from "@/components/auth";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -30,7 +31,10 @@ export default function RootLayout({
       data-scroll-behavior="smooth"
     >
       <body className="min-h-screen bg-[#0a0e1a] text-white font-[family-name:var(--font-geist-sans)]">
-        <QueryProvider>{children}</QueryProvider>
+        <Providers>
+          {children}
+          <AuthModal />
+        </Providers>
       </body>
     </html>
   );

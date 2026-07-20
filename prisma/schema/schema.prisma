@@ -11,9 +11,19 @@ model User {
   id        String   @id @default(uuid()) // Supabase auth.users.id
   email     String   @unique
   fullName  String?  @map("full_name")
-  role      String   @default("user") // user | admin | seller
+  role      String   @default("user") // PERMISSION role: user | admin | seller
+
+  // Optional profile fields collected in the (skippable) profile-setup step.
+  // `jobTitle` is the user's self-described job role (e.g. "Project Manager") —
+  // distinct from `role` above, which is the app permission level.
+  organization String? @map("organization")
+  jobTitle     String? @map("job_title")
+
   createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  // @default(now()) gives the column a DB-level default so the Supabase
+  // `handle_new_user` trigger (which INSERTs outside Prisma) doesn't hit a
+  // NOT NULL violation; @updatedAt still bumps it on app-level updates.
+  updatedAt DateTime @updatedAt @default(now()) @map("updated_at")
 
   // Relations
   datasets  Dataset[]

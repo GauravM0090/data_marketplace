@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { getCachedPublishedDatasets } from '@/services/dataset.service'
-import { datasetsQuerySchema } from '@/lib/validations/dataset.schema'
+import { datasetsQuerySchema } from '@/validations/dataset.schema'
 
 export default async function DatasetsPage() {
   const { datasets } = await getCachedPublishedDatasets(datasetsQuerySchema.parse({}))

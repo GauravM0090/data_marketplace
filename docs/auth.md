@@ -1,6 +1,6 @@
 # Auth — Supabase SSR Session Management
 
-> Last updated: June 2026
+> Last updated: 30 June 2026
 
 ---
 
@@ -256,26 +256,79 @@ Consumers today: `POST /api/v1/datasets` (seller/admin only) and `uploadDatasetF
 
 ---
 
-## Auth Pages
+## Auth UI — Modal, Not Routes
 
-| Route | File | Purpose |
+Auth is **not** a set of dedicated routes. There are no `/sign-in`, `/sign-up`,
+`/forgot-password`, or `/reset-password` pages. Instead the forms open as an
+**overlay on whatever route the user is currently on**, and after a successful
+action the modal closes and the user stays exactly where they were.
+
+The session itself is **never** held in this state — it lives in the auth
+cookie and is read server-side via `getClaims()` on every request. The store is
+purely the modal's open/closed UI state. Following the tech-stack rule (Zustand
+for UI-only state, no provider needed), it's a Zustand store, not a context:
+
+| Concern | File | Purpose |
 |---|---|---|
-| `/sign-up` | `src/app/(auth)/sign-up/page.tsx` | Register with email + password |
-| `/sign-in` | `src/app/(auth)/sign-in/page.tsx` | Sign in with email + password |
-| `/forgot-password` | `src/app/(auth)/forgot-password/page.tsx` | Send password reset email |
-| `/reset-password` | `src/app/(auth)/reset-password/page.tsx` | Set a new password after reset link |
+| State | `src/stores/auth-modal.store.ts` | Zustand `useAuthModal()` store: `{ view, open, close }`. No provider, no Supabase logic — UI state only. `open('sign-in' \| 'sign-up' \| 'forgot-password')`. |
+| UI — shell | `src/components/auth/auth-modal.tsx` | Light split-screen card (860×600, 12px radius, backdrop `bg-black/65`, Esc/backdrop to close), rendered once in the root layout next to `{children}`. Provides the shared side panel; each form renders only its right-side content. |
+| UI — side panel | `src/components/auth/auth-side-panel.tsx` | The blue marketing panel (`#1A2552`) shared by all three views. |
+| UI — forms | `src/components/auth/{sign-in,sign-up,forgot-password}-form.tsx` | Built with **React Hook Form + zodResolver** (see tech-stack-decisions.md); switch views via `useAuthModal`. |
+| UI — triggers | `src/components/auth/auth-nav-buttons.tsx` | Navbar Sign In / Get Started buttons that `open()` the modal. |
 
-All 4 pages share the layout at `src/app/(auth)/layout.tsx` — dark glassmorphic design with animated gradient blobs.
+`src/components/auth/index.ts` re-exports the UI (`AuthModal`, `AuthNavButtons`).
+The only React client provider mounted app-wide is TanStack Query's, in
+`src/app/providers.tsx` (`Providers`) — see docs/tech-stack-decisions.md.
+
+### Sign-up — 3 steps (one component, internal `step` state)
+
+`sign-up-form.tsx` walks through:
+
+1. **Credentials** — email + password (RHF + `signUpSchema`; password rule "Use
+   8+ characters and one number", with a live strength hint). `signUp()` emails a
+   6-digit confirmation code.
+2. **Email OTP** — "Check your inbox" with 6 code boxes + resend countdown.
+   `verifySignupOtp(email, token)` calls `verifyOtp({ type: 'signup' })`.
+3. **Profile setup (skippable)** — Full Name / Organization / Role (`profileSchema`
+   + `updateProfile()`). All optional; `full_name` falls back to the email prefix.
+
+> The `users` row is created by the Supabase `handle_new_user` trigger on signup;
+> `updateProfile` updates it. See the trigger / `updated_at` caveat in db-schema.md.
+
+### Email delivery (OTP) requires custom SMTP
+
+All the OTP flows depend on Supabase **custom SMTP** + `{{ .Token }}` in the
+**Confirm signup** and **Reset password** templates. Built-in email can't edit
+templates and is rate-limited. Full setup (Resend example, troubleshooting) is in
+**docs/environment-setup.md → Supabase Auth Emails**.
+
+### Password reset — OTP, not a link
+
+There is **no** reset-password page or recovery link. Reset is a two-step OTP
+flow inside the forgot-password form:
+
+1. **Step 1 — email.** `forgotPassword(email)` calls `resetPasswordForEmail()`
+   with **no `redirectTo`**, so Supabase emails the recovery `{{ .Token }}`
+   (a 6-digit code) instead of a magic link.
+2. **Step 2 — code + new password.** `verifyPasswordResetOtp(email, token,
+   newPassword)` calls `verifyOtp({ type: 'recovery' })` (establishes a session
+   in the cookie) then `updateUser({ password })`. The form closes in place.
+
+> ⚠️ The recovery email template must include `{{ .Token }}` for the code to
+> appear — **Supabase Auth → Email Templates → Reset Password**. (No Redirect
+> URL config is needed, since there's no link to follow.)
 
 ### Server Actions (`src/actions/auth.actions.ts`)
 
 | Action | What it does |
 |---|---|
-| `signUp(email, password)` | Registers via Supabase Auth, sends confirmation email |
-| `signIn(email, password)` | Signs in via password, redirects to `/` |
-| `signOut()` | Signs out, clears cookie, redirects to `/sign-in` |
-| `forgotPassword(email)` | Sends reset email via `resetPasswordForEmail()` |
-| `resetPassword(newPassword)` | Updates password via `updateUser()`, redirects to `/sign-in` |
+| `signUp(email, password)` | Registers via Supabase Auth, emails a 6-digit confirmation code, returns `{ success }` |
+| `verifySignupOtp(email, token)` | `verifyOtp({ type: 'signup' })`; best-effort backfills `full_name` from the email prefix |
+| `updateProfile({ fullName, organization, jobTitle })` | Updates the current user's `users` row (profile step); blank `fullName` → email prefix |
+| `signIn(email, password)` | Signs in via password, returns `{ success }` — **no redirect**, the modal closes in place |
+| `signOut()` | Signs out, clears cookie, redirects to `/` |
+| `forgotPassword(email)` | Emails a 6-digit recovery code via `resetPasswordForEmail()` (no redirect) |
+| `verifyPasswordResetOtp(email, token, newPassword)` | `verifyOtp({ type: 'recovery' })` + `updateUser()`, returns `{ success }` — **no redirect** |
 
 ---
 

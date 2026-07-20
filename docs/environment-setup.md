@@ -24,6 +24,31 @@ The codebase reads everything from environment variables. Switching environments
 
 ## Environment Files
 
+### `.env` vs `.env.local` precedence
+
+Both files can exist at the root of `market-place/`:
+
+- **`.env`** — committed defaults / shared (team/org project) values.
+- **`.env.local`** — git-ignored; **overrides** `.env` key-by-key.
+
+**Next.js** loads `.env.local` over `.env` automatically (you'll see
+`Environments: .env.local, .env` on dev start). **Prisma's CLI** does too —
+`prisma.config.ts` calls `dotenv.config('.env')` then
+`dotenv.config('.env.local', { override: true })` so `migrate`/`db push`/`seed`
+target the **same** database the app uses. Use `.env.local` to point your local
+app at your own personal Supabase project without touching the committed `.env`.
+
+> Verify which DB Prisma resolves (project ref shows in the username):
+> ```
+> node -e "require('dotenv').config({path:'.env'});require('dotenv').config({path:'.env.local',override:true});console.log(process.env.DIRECT_URL.replace(/postgresql:\/\/([^:]+):.*/,'$1'))"
+> ```
+
+> **Note on key names:** this project uses `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`
+> (the `sb_publishable_…` key) for the browser/server clients, plus
+> `NEXT_PUBLIC_SUPABASE_ANON_KEY` for the proxy, and separate `DATABASE_URL`
+> (transaction pooler, :6543) + `DIRECT_URL` (session pooler, :5432). See
+> `docs/auth.md` for the full key reference.
+
 ### Local — `.env.local`
 
 Create this file at the root of `market-place/`. It is git-ignored and never committed.
@@ -223,6 +248,44 @@ Redirect URLs: https://yourdomain.com/**
 ```
 
 If you forget this, magic links and OAuth redirects will fail with a "redirect URL not allowed" error.
+
+---
+
+## Supabase Auth Emails — Custom SMTP + OTP Templates
+
+Auth uses **OTP codes** (6-digit), not magic links — for sign-up email
+verification and password reset. This requires two things configured **per
+Supabase project** (dev and prod separately):
+
+1. **Custom SMTP** (Authentication → Emails → SMTP Settings). Supabase's
+   built-in email is heavily rate-limited and **only sends to org members**, and
+   it **won't let you edit the email templates** — so custom SMTP is *required*
+   for the OTP flow, not optional. Example (Resend):
+   ```
+   Host:     smtp.resend.com
+   Port:     465
+   Username: resend                 # the literal word, not your project name
+   Password: re_xxxxxxxx            # your Resend API key, NOT a password you invent
+   Sender:   onboarding@resend.dev  # or an address on a domain you verified in Resend
+   ```
+   > A fresh Resend account can only send **from** `onboarding@resend.dev` and
+   > only **to** the email you registered with — until you verify a domain.
+
+2. **`{{ .Token }}` in the templates** (Authentication → Emails). The template
+   source only becomes editable once custom SMTP is set up. Put `{{ .Token }}`
+   in **Confirm signup** and **Reset password** so the email contains the code:
+   ```
+   <h2>Your verification code</h2>
+   <h1>{{ .Token }}</h1>
+   ```
+   Without `{{ .Token }}` the email is a link and the OTP boxes can never be
+   satisfied. Also keep **Confirm email ON** (Providers → Email) so signup
+   actually issues a code to verify.
+
+> **Symptom map:** signup 500 with empty body = email send failing (bad SMTP) OR
+> the `users.updated_at` trigger NOT NULL issue (see `db-schema.md`). "Token
+> expired/invalid" on a fresh code = the email already exists (stale token) —
+> delete the user in Auth → Users and retry.
 
 ---
 
