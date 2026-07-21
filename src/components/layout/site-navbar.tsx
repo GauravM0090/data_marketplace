@@ -5,7 +5,8 @@
 
 import { useState } from 'react'
 import { useAuthModal } from '@/stores/auth-modal.store'
-import { BrandLogo } from './brand-logo'
+import { BrandLogo } from '../landing/brand-logo'
+import Link from 'next/link'
 
 const NAV_LINKS = [
   { label: 'Browse Datasets', href: '/datasets', hasMenu: true },
@@ -37,8 +38,10 @@ export function SiteHeader() {
 
   return (
     <header className="flex h-16 items-center justify-between bg-white px-[44px] py-3">
+        <Link href={'/'}>
       <BrandLogo />
 
+      </Link>
       <nav className="flex items-center gap-5">
         {NAV_LINKS.map((link) => (
           <a

@@ -6,7 +6,7 @@ import Link from 'next/link'
 import type { DatasetCard as DatasetCardData } from '@/types/dataset'
 import { formatCompactNumber, formatRelativeTime, countryFlag } from '@/utils/format'
 
-const MAX_VISIBLE_COUNTRIES = 2
+const MAX_VISIBLE_COUNTRIES = 3
 const MAX_VISIBLE_LANGUAGES = 2
 
 function StatChip({ icon, label }: { icon: React.ReactNode; label: string }) {
@@ -97,7 +97,7 @@ export function DatasetCard({ dataset }: { dataset: DatasetCardData }) {
   const extraLanguages = Math.max(languages.length - MAX_VISIBLE_LANGUAGES, 0)
 
   return (
-    <div className="flex flex-col gap-4 rounded-xl border border-[#E5E5E5] bg-white p-5">
+    <div className="flex h-full flex-col gap-4 rounded-xl border border-[#E5E5E5] bg-white p-5">
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-start gap-3">
           <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[#0F1B3D]">
@@ -132,28 +132,40 @@ export function DatasetCard({ dataset }: { dataset: DatasetCardData }) {
         {compliance[0] && <StatChip icon={ICONS.compliance} label={compliance[0]} />}
       </div>
 
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-[#F0F0F0] pt-4 font-public-sans text-xs text-[#616161]">
+      <div className="mt-auto flex flex-wrap items-center justify-between gap-x-2 gap-y-2 border-t border-[#F0F0F0] pt-4 font-public-sans text-xs text-[#616161]">
         {countries.length > 0 && (
-          <span>
-            Countries:{' '}
-            <span className="tracking-wide">
-              {countries.slice(0, MAX_VISIBLE_COUNTRIES).map(countryFlag).join(' ')}
-            </span>
-            {extraCountries > 0 && ` +${extraCountries}`}
-          </span>
+          <div className="flex items-center gap-1.5">
+            <span>Countries:</span>
+            <div className="flex items-center">
+              <div className="flex -space-x-1.5">
+                {countries.slice(0, MAX_VISIBLE_COUNTRIES).map((c, i) => (
+                  <span
+                    key={i}
+                    className="flex h-[18px] w-[18px] items-center justify-center rounded-full bg-white text-[14px] ring-2 ring-white"
+                  >
+                    {countryFlag(c)}
+                  </span>
+                ))}
+              </div>
+              {extraCountries > 0 && (
+                <span className="ml-1 font-medium text-[#181818]">+{extraCountries}</span>
+              )}
+            </div>
+          </div>
         )}
         {languages.length > 0 && (
-          <span>
-            Languages:{' '}
-            <span className="text-[#181818]">
+          <div className="flex items-center gap-1">
+            <span>Languages:</span>
+            <span className="font-medium text-[#181818]">
               {languages.slice(0, MAX_VISIBLE_LANGUAGES).join(', ')}
+              {extraLanguages > 0 && `, +${extraLanguages}`}
             </span>
-            {extraLanguages > 0 && ` +${extraLanguages}`}
-          </span>
+          </div>
         )}
-        <span>
-          Updated: <span className="font-medium text-[#181818]">{formatRelativeTime(updatedAt)}</span>
-        </span>
+        <div className="flex items-center gap-1">
+          <span>Updated:</span>
+          <span className="font-medium text-[#181818]">{formatRelativeTime(updatedAt)}</span>
+        </div>
       </div>
 
       <div className="flex items-center justify-between border-t border-[#F0F0F0] pt-4">

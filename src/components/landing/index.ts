@@ -1,5 +1,4 @@
-// components/landing/index.ts — barrel for landing-page sections.
-export { SiteHeader } from './site-header'
+// components/landing/index.ts — barrel for landing
 export { Hero } from './hero'
 export { TrustedBy } from './trusted-by'
 export { BrandLogo } from './brand-logo'

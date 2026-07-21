@@ -4,16 +4,16 @@
 // Scroll model: The page scrolls naturally. The SiteHeader and ExploreSearchHeader
 // stick to the top (ExploreSearchHeader animates its background). The FiltersSidebar
 // sticks to the side while the DatasetResults and the global Footer scroll.
-import { SiteHeader } from '@/components/landing'
-import { ExploreSearchHeader } from '@/components/datasets/explore-search-header'
-import { FiltersSidebar } from '@/components/datasets/filters-sidebar'
-import { DatasetResults } from '@/components/datasets/dataset-results'
+
+import { ExploreSearchHeader } from '@/components/search-datasets/explore-search-header'
+import { FiltersSidebar } from '@/components/search-datasets/filters-sidebar'
+import { DatasetResults } from '@/components/search-datasets/dataset-results'
 
 export default function DatasetsPage() {
   return (
     <div className="flex min-h-screen flex-col bg-[#F5F7FA] text-[#181818]">
       <div className="sticky top-0 z-50 flex flex-col">
-        <SiteHeader />
+      
         <ExploreSearchHeader />
       </div>
 
