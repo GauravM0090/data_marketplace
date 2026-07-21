@@ -44,6 +44,25 @@ model Dataset {
   category      String?
   language      String?
 
+  // ── Filterable facets (free-text, sourced from data — see explore page) ──
+  modality      String?  // Image | Text | Audio | Video | Multimodal …
+  useCase       String?  @map("use_case")     // Object Detection | Sentiment | …
+  licenseType   String?  @map("license_type") // Commercial | Research | CC-BY …
+  qualityScore  Float?   @map("quality_score") // 0–10, drives "9.2 quality" + filter
+
+  // Advanced filters
+  annotationType   String? @map("annotation_type")   // Bounding Box | Segmentation | None …
+  collectionMethod String? @map("collection_method") // Real-world | Synthetic | Crowdsourced …
+
+  // ── Card display fields ──
+  datasetCode   String?  @map("dataset_code") // human ref shown on card, e.g. "DS-1032"
+  recordCount   BigInt?  @map("record_count") // e.g. 1_800_000 → "1.8M scans"
+  recordUnit    String?  @map("record_unit")  // unit label for recordCount, e.g. "scans"
+
+  languages     String[] @default([]) // multi-language coverage ("English, French, +2")
+  countries     String[] @default([]) // ISO-ish country codes for the flag row
+  compliance    String[] @default([]) // e.g. ["IRB-compliant", "GDPR"]
+
   tags          String[] @default([])
 
   price         Decimal  @default(0) @db.Decimal(10, 2)
@@ -74,8 +93,14 @@ uploadedBy User? @relation(fields: [uploadedByUserId], references: [id], onDelet
   @@index([industry])
   @@index([category])
   @@index([language])
+  @@index([modality])
+  @@index([useCase])
+  @@index([licenseType])
+  @@index([qualityScore])
   @@index([uploadedByUserId])
   @@index([tags], type: Gin)
+  @@index([languages], type: Gin)
+  @@index([compliance], type: Gin)
 
   @@map("datasets")
 }

@@ -3,6 +3,7 @@
 // primary "Get started" CTA which opens the auth modal in place.
 'use client'
 
+import { useState } from 'react'
 import { useAuthModal } from '@/stores/auth-modal.store'
 import { BrandLogo } from './brand-logo'
 
@@ -21,8 +22,18 @@ function Chevron() {
   )
 }
 
+function UserIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M12 12C14.21 12 16 10.21 16 8C16 5.79 14.21 4 12 4C9.79 4 8 5.79 8 8C8 10.21 9.79 12 12 12ZM12 14C9.33 14 4 15.34 4 18V20H20V18C20 15.34 14.67 14 12 14Z" fill="white" />
+    </svg>
+  )
+}
+
 export function SiteHeader() {
   const { open } = useAuthModal()
+  // Mock logged in state to display the "My profile" badge as requested.
+  const [isLoggedIn] = useState(true)
 
   return (
     <header className="flex h-16 items-center justify-between bg-white px-[44px] py-3">
@@ -41,13 +52,27 @@ export function SiteHeader() {
         ))}
       </nav>
 
-      <button
-        type="button"
-        onClick={() => open('sign-up')}
-        className="rounded-lg bg-[#2563EB] px-7 py-2 font-public-sans text-base font-semibold text-white transition-colors hover:bg-[#1d4ed8]"
-      >
-        Get started
-      </button>
+      {isLoggedIn ? (
+        <button
+          type="button"
+          className="flex items-center gap-2 rounded-full bg-[#EBF1FF] py-1.5 pl-1.5 pr-4 transition-colors hover:bg-blue-100"
+        >
+          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#0F1B3D]">
+            <UserIcon />
+          </div>
+          <span className="font-public-sans text-sm font-semibold text-[#2563EB]">
+            My profile
+          </span>
+        </button>
+      ) : (
+        <button
+          type="button"
+          onClick={() => open('sign-up')}
+          className="rounded-lg bg-[#2563EB] px-7 py-2 font-public-sans text-base font-semibold text-white transition-colors hover:bg-[#1d4ed8]"
+        >
+          Get started
+        </button>
+      )}
     </header>
   )
 }

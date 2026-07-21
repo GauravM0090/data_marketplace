@@ -39,7 +39,16 @@ export async function GET(request: NextRequest) {
   const rawQuery = {
     page: searchParams.get('page') ?? undefined,
     limit: searchParams.get('limit') ?? undefined,
+    q: searchParams.get('q') ?? undefined,
+    // Multi-select sidebar facets (comma-separated in the URL).
     industry: searchParams.get('industry') ?? undefined,
+    modality: searchParams.get('modality') ?? undefined,
+    useCase: searchParams.get('useCase') ?? undefined,
+    licenseType: searchParams.get('licenseType') ?? undefined,
+    annotationType: searchParams.get('annotationType') ?? undefined,
+    collectionMethod: searchParams.get('collectionMethod') ?? undefined,
+    compliance: searchParams.get('compliance') ?? undefined,
+    minQuality: searchParams.get('minQuality') ?? undefined,
     category: searchParams.get('category') ?? undefined,
     language: searchParams.get('language') ?? undefined,
     currency: searchParams.get('currency') ?? undefined,
@@ -47,6 +56,7 @@ export async function GET(request: NextRequest) {
     tags: searchParams.get('tags') ?? undefined,
     minPrice: searchParams.get('minPrice') ?? undefined,
     maxPrice: searchParams.get('maxPrice') ?? undefined,
+    sort: searchParams.get('sort') ?? undefined,
   }
 
   const parsed = datasetsQuerySchema.safeParse(rawQuery)

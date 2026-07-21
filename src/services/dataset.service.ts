@@ -2,8 +2,8 @@ import { Prisma } from '@prisma/client'
 import { unstable_cache } from 'next/cache'
 import { prisma } from '@/lib/prisma'
 import { logger } from '@/lib/logger'
-import type { DatasetCard } from '@/types/dataset'
-import type { DatasetsQueryParams } from '@/validations/dataset.schema'
+import type { DatasetCard, DatasetFacets, FacetCount } from '@/types/dataset'
+import type { DatasetsQueryParams, DatasetSort } from '@/validations/dataset.schema'
 
 // Bust this tag (revalidateTag) whenever a dataset is published or edited so the
 // cached browse/list results below pick the change up immediately.
@@ -12,6 +12,51 @@ export const DATASETS_CACHE_TAG = 'datasets'
 export interface PaginatedDatasets {
   datasets: DatasetCard[]
   total: number
+}
+
+// Card projection selected from Postgres. `recordCount` arrives as BigInt and
+// `sampleUrl` as a nullable string — both are normalized in `toCard` below so
+// the returned shape stays JSON-serializable (required for unstable_cache).
+const CARD_SELECT = {
+  id: true,
+  title: true,
+  slug: true,
+  description: true,
+  datasetCode: true,
+  industry: true,
+  category: true,
+  qualityScore: true,
+  fileFormat: true,
+  recordCount: true,
+  recordUnit: true,
+  languages: true,
+  countries: true,
+  compliance: true,
+  sampleUrl: true,
+  thumbnailUrl: true,
+  updatedAt: true,
+} satisfies Prisma.DatasetSelect
+
+type CardRow = Prisma.DatasetGetPayload<{ select: typeof CARD_SELECT }>
+
+function toCard(row: CardRow): DatasetCard {
+  const { sampleUrl, recordCount, updatedAt, ...rest } = row
+  return {
+    ...rest,
+    // BigInt → number: card counts are display-only and safely within 2^53.
+    recordCount: recordCount !== null ? Number(recordCount) : null,
+    sampleAvailable: sampleUrl !== null,
+    updatedAt: updatedAt.toISOString(),
+  }
+}
+
+// Maps the API `sort` param to a Prisma orderBy. `nulls: 'last'` keeps datasets
+// without a quality score from floating to the top of the "quality" sort.
+const ORDER_BY: Record<DatasetSort, Prisma.DatasetOrderByWithRelationInput> = {
+  recent: { createdAt: 'desc' },
+  quality: { qualityScore: { sort: 'desc', nulls: 'last' } },
+  price_asc: { price: 'asc' },
+  price_desc: { price: 'desc' },
 }
 
 /**
@@ -29,24 +74,51 @@ export async function getDatasetById(id: string) {
   return prisma.dataset.findUnique({ where: { id } })
 }
 
-export async function getPublishedDatasets(
-  params: DatasetsQueryParams
-): Promise<PaginatedDatasets> {
+// `in` (not equals) — a multi-select facet matches a dataset whose value is any
+// of the checked options. Empty arrays are treated as "no filter".
+const inList = (values?: string[]) =>
+  values && values.length > 0 ? { in: values } : undefined
+
+/**
+ * Builds the shared Prisma `where` from the validated query params. Used by both
+ * the list query and the facet counts so they always agree on what "matches".
+ */
+function buildDatasetWhere(params: DatasetsQueryParams): Prisma.DatasetWhereInput {
   const {
-    page,
-    limit,
+    q,
     industry,
+    modality,
+    useCase,
+    licenseType,
+    annotationType,
+    collectionMethod,
+    compliance,
+    minQuality,
     category,
     language,
-    tags,
     currency,
     fileFormat,
+    tags,
     minPrice,
     maxPrice,
   } = params
 
-  const where: Prisma.DatasetWhereInput = {
-    ...(industry && { industry }),
+  return {
+    ...(q && {
+      OR: [
+        { title: { contains: q, mode: 'insensitive' } },
+        { description: { contains: q, mode: 'insensitive' } },
+      ],
+    }),
+    ...(inList(industry) && { industry: inList(industry) }),
+    ...(inList(modality) && { modality: inList(modality) }),
+    ...(inList(useCase) && { useCase: inList(useCase) }),
+    ...(inList(licenseType) && { licenseType: inList(licenseType) }),
+    ...(inList(annotationType) && { annotationType: inList(annotationType) }),
+    ...(inList(collectionMethod) && { collectionMethod: inList(collectionMethod) }),
+    // Array column — matches datasets carrying ANY of the requested certs.
+    ...(compliance && compliance.length > 0 && { compliance: { hasSome: compliance } }),
+    ...(minQuality !== undefined && { qualityScore: { gte: minQuality } }),
     ...(category && { category }),
     ...(language && { language }),
     ...(currency && { currency }),
@@ -60,31 +132,27 @@ export async function getPublishedDatasets(
       },
     }),
   }
+}
+
+export async function getPublishedDatasets(
+  params: DatasetsQueryParams
+): Promise<PaginatedDatasets> {
+  const { page, limit, sort } = params
+  const where = buildDatasetWhere(params)
 
   logger.info(
-    { where, page, limit },
+    { where, page, limit, sort },
     'dataset.service: fetching published datasets'
   )
 
   try {
     // findMany + count run in the same transaction so total stays consistent
-    // with the page of results even if rows change between the two queries.  
-    const [datasets, total] = await prisma.$transaction([
+    // with the page of results even if rows change between the two queries.
+    const [rows, total] = await prisma.$transaction([
       prisma.dataset.findMany({
         where,
-        select: {
-          id: true,
-          title: true,
-
-          slug: true,
-          description: true,
-          category: true,
-          language: true,
-          thumbnailUrl: true,
-        },
-        orderBy: {
-          createdAt: 'desc',
-        },
+        select: CARD_SELECT,
+        orderBy: ORDER_BY[sort],
         skip: (page - 1) * limit,
         take: limit,
       }),
@@ -92,11 +160,11 @@ export async function getPublishedDatasets(
     ])
 
     logger.info(
-      { count: datasets.length, total, page, limit },
+      { count: rows.length, total, page, limit },
       'dataset.service: published datasets fetched successfully'
     )
 
-    return { datasets, total }
+    return { datasets: rows.map(toCard), total }
   } catch (error) {
     logger.error(
       { error, where, page, limit },
@@ -105,6 +173,66 @@ export async function getPublishedDatasets(
     throw error
   }
 }
+
+// ─── Facets ───────────────────────────────────────────────────
+
+// One { value, count } bucket per distinct non-null value, most common first.
+// These are global counts (not narrowed by the active filters) — the sidebar
+// uses them as a "how much is available" hint. Explicit per-field groupBy calls
+// (rather than a dynamic field) keep Prisma's return types inferable.
+const toFacet = (rows: { value: string | null; _count: { _all: number } }[]): FacetCount[] =>
+  rows
+    .filter((r): r is { value: string; _count: { _all: number } } => Boolean(r.value))
+    .map((r) => ({ value: r.value, count: r._count._all }))
+
+/**
+ * Distinct values + counts for each sidebar facet, powering the checkbox lists
+ * and their trailing counts (e.g. "Healthcare 32").
+ */
+export async function getDatasetFacets(): Promise<DatasetFacets> {
+  const [industry, modality, useCase, licenseType] = await Promise.all([
+    prisma.dataset.groupBy({
+      by: ['industry'],
+      where: { industry: { not: null } },
+      _count: { _all: true },
+      orderBy: { _count: { industry: 'desc' } },
+    }),
+    prisma.dataset.groupBy({
+      by: ['modality'],
+      where: { modality: { not: null } },
+      _count: { _all: true },
+      orderBy: { _count: { modality: 'desc' } },
+    }),
+    prisma.dataset.groupBy({
+      by: ['useCase'],
+      where: { useCase: { not: null } },
+      _count: { _all: true },
+      orderBy: { _count: { useCase: 'desc' } },
+    }),
+    prisma.dataset.groupBy({
+      by: ['licenseType'],
+      where: { licenseType: { not: null } },
+      
+      _count: { _all: true },
+      orderBy: { _count: { licenseType: 'desc' } },
+    }),
+  ])
+
+  return {
+    industry: toFacet(industry.map((g) => ({ value: g.industry, _count: g._count }))),
+    modality: toFacet(modality.map((g) => ({ value: g.modality, _count: g._count }))),
+    useCase: toFacet(useCase.map((g) => ({ value: g.useCase, _count: g._count }))),
+    licenseType: toFacet(
+      licenseType.map((g) => ({ value: g.licenseType, _count: g._count }))
+    ),
+  }
+}
+
+export const getCachedDatasetFacets = unstable_cache(
+  () => getDatasetFacets(),
+  ['dataset-facets'],
+  { revalidate: 60, tags: [DATASETS_CACHE_TAG] }
+)
 
 /**
  * Cache-wrapped {@link getPublishedDatasets} for the public browse/list paths.

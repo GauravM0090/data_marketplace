@@ -1,17 +1,36 @@
 // ─── Dataset Types ────────────────────────────────────────────
 
 /**
- * Lightweight shape returned by GET /api/v1/datasets
- * Only the fields needed for the listing / browse page card.
+ * Lightweight shape returned by GET /api/v1/datasets — everything the explore
+ * page card renders and nothing heavier. Note the service normalizes a few DB
+ * types so this stays JSON-safe (and cacheable):
+ *   - `recordCount` comes off Postgres as BigInt → mapped to number here
+ *   - `sampleAvailable` is derived from whether a sampleUrl exists
+ * Price/Decimal is intentionally absent — the card doesn't show a price.
  */
 export interface DatasetCard {
   id: string
   title: string
   slug: string
   description: string
+
+  datasetCode: string | null
+  industry: string | null
   category: string | null
-  language: string | null
+
+  qualityScore: number | null
+  fileFormat: string | null
+
+  recordCount: number | null
+  recordUnit: string | null
+
+  languages: string[]
+  countries: string[]
+  compliance: string[]
+
+  sampleAvailable: boolean
   thumbnailUrl: string | null
+  updatedAt: string
 }
 
 // Query params + their validation now live in `@/validations/dataset.schema`
@@ -31,4 +50,20 @@ export interface PaginationMeta {
 export interface DatasetsListResponse {
   datasets: DatasetCard[]
   pagination: PaginationMeta
+}
+
+// ─── Facets ───────────────────────────────────────────────────
+
+/** One selectable filter option + how many datasets carry it. */
+export interface FacetCount {
+  value: string
+  count: number
+}
+
+/** Sidebar facet buckets returned by GET /api/v1/datasets/facets. */
+export interface DatasetFacets {
+  industry: FacetCount[]
+  modality: FacetCount[]
+  useCase: FacetCount[]
+  licenseType: FacetCount[]
 }

@@ -25,6 +25,26 @@ const MAX_INT4 = 2_147_483_647
 const filterText = () => z.string().trim().min(1).max(MAX_FILTER_TEXT_LENGTH)
 const priceBound = () => z.coerce.number().nonnegative().max(MAX_PRICE)
 
+// Quality score lives on a 0–10 scale (drives "9.2 quality" + the sidebar
+// "Data quality score" filter).
+const MAX_QUALITY = 10
+
+// A comma-separated URL param (?industry=Healthcare,BFSI) → trimmed, de-blanked
+// string array. Used by every multi-select sidebar facet.
+const csvList = (max = MAX_TAGS, maxLen = MAX_FILTER_TEXT_LENGTH) =>
+  z
+    .string()
+    .transform((value) =>
+      value
+        .split(',')
+        .map((part) => part.trim())
+        .filter(Boolean)
+    )
+    .pipe(z.array(z.string().max(maxLen)).max(max))
+
+export const DATASET_SORTS = ['recent', 'quality', 'price_asc', 'price_desc'] as const
+export type DatasetSort = (typeof DATASET_SORTS)[number]
+
 // Normalise "absent-ish" numeric inputs (null / empty string / undefined) to
 // `undefined` BEFORE coercion. Without this, z.coerce.number() turns null and ""
 // into 0 — so a missing required price would silently become a free dataset.
@@ -39,7 +59,26 @@ export const datasetsQuerySchema = z
   .object({
     page: z.coerce.number().int().positive().default(1),
     limit: z.coerce.number().int().positive().max(MAX_PAGE_SIZE).default(12),
-    industry: filterText().optional(),
+
+    // Free-text search over title + description.
+    q: z.string().trim().max(MAX_FILTER_TEXT_LENGTH).optional(),
+
+    // Multi-select sidebar facets — each accepts a comma-separated list and
+    // matches a dataset whose value is IN the requested set.
+    industry: csvList().optional(),
+    modality: csvList().optional(),
+    useCase: csvList().optional(),
+    licenseType: csvList().optional(),
+    // Advanced filters
+    annotationType: csvList().optional(),
+    collectionMethod: csvList().optional(),
+    // Array column — matches datasets carrying ANY of the requested certs.
+    compliance: csvList().optional(),
+
+    // "Data quality score" filter — minimum score (0–10).
+    minQuality: z.coerce.number().min(0).max(MAX_QUALITY).optional(),
+
+    // Single-value legacy filters (kept for API back-compat).
     category: filterText().optional(),
     language: filterText().optional(),
     fileFormat: filterText().optional(),
@@ -51,18 +90,12 @@ export const datasetsQuerySchema = z
       .transform((value) => value.toUpperCase())
       .optional(),
     // Comma-separated in the URL (?tags=nlp,finance) → trimmed, deduped-by-filter array.
-    tags: z
-      .string()
-      .transform((value) =>
-        value
-          .split(',')
-          .map((tag) => tag.trim())
-          .filter(Boolean)
-      )
-      .pipe(z.array(z.string().max(MAX_TAG_LENGTH)).max(MAX_TAGS))
-      .optional(),
+    tags: csvList(MAX_TAGS, MAX_TAG_LENGTH).optional(),
+
     minPrice: priceBound().optional(),
     maxPrice: priceBound().optional(),
+
+    sort: z.enum(DATASET_SORTS).default('recent'),
   })
   .refine(
     (data) =>

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono, Public_Sans, Space_Grotesk } from "next/font/google";
 import { Providers } from "./providers";
 import { AuthModal } from "@/components/auth";
+import { SiteFooter } from "@/components/layout/site-footer";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -40,9 +41,12 @@ export default function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} ${publicSans.variable} ${spaceGrotesk.variable} antialiased`}
       data-scroll-behavior="smooth"
     >
-      <body className="min-h-screen bg-[#0a0e1a] text-white font-[family-name:var(--font-geist-sans)]">
+      <body className="min-h-screen flex flex-col bg-[#0a0e1a] text-white font-[family-name:var(--font-geist-sans)]">
         <Providers>
-          {children}
+          <div className="flex-1 flex flex-col">
+            {children}
+          </div>
+          <SiteFooter />
           <AuthModal />
         </Providers>
       </body>
