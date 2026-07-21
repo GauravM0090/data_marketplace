@@ -33,7 +33,8 @@ export function SignInForm() {
       setError('password', { message: 'Incorrect password. Please try again.' })
       return
     }
-    // Stay on the current route — just refresh server data and close.
+    // Stay on the current route — router.refresh() re-renders the layout
+    // with the fresh server-side session, which is what updates the header.
     close()
     router.refresh()
   }

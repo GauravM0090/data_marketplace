@@ -4,6 +4,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { cookies } from 'next/headers'
+import { revalidatePath } from 'next/cache'
 import { logger } from '@/lib/logger'
 import { prisma } from '@/lib/prisma'
 import { getSessionUserId } from '@/services/auth.service'
@@ -308,7 +309,7 @@ export async function updateProfile(input: ProfileInput) {
 
   // Empty optional fields are left untouched; full_name falls back to the email
   // prefix when blank so the user always has a display name.
-  const { fullName, organization, jobTitle } = parsed.data
+  const { fullName, organization, industry, jobTitle } = parsed.data
   const user = await prisma.user.findUnique({ where: { id: userId }, select: { email: true } })
   const resolvedName =
     fullName?.trim() || user?.email?.split('@')[0] || null
@@ -318,11 +319,13 @@ export async function updateProfile(input: ProfileInput) {
     data: {
       fullName: resolvedName,
       organization: organization?.trim() || null,
+      industry: industry?.trim() || null,
       jobTitle: jobTitle?.trim() || null,
     },
 
   })
 
   logger.info({ userId }, 'auth.actions: updateProfile succeeded')
+  revalidatePath('/profile')
   return { success: true }
 }

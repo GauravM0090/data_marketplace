@@ -70,6 +70,7 @@ export const verifyResetOtpSchema = z.object({
 export const profileSchema = z.object({
   fullName: z.string().trim().max(120, 'Name is too long.').optional(),
   organization: z.string().trim().max(160, 'Organization is too long.').optional(),
+  industry: z.string().trim().max(120, 'Industry is too long.').optional(),
   jobTitle: z.string().trim().max(120, 'Role is too long.').optional(),
 })
 

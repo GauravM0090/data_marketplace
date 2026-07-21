@@ -65,3 +65,37 @@ export async function getSessionUser(cookieStore: CookieStore): Promise<SessionU
 
   return dbUser
 }
+
+/**
+ * Ensures a `users` row exists for the current session, creating it from the
+ * verified JWT claims when it's missing — e.g. the `auth.users` -> `public.users`
+ * trigger never fired for this account (seen with accounts that predate the
+ * trigger, or a one-off hiccup). Without this, a perfectly valid Supabase
+ * session can get permanently bounced out of protected pages because the DB
+ * side never caught up. Uses `upsert` so concurrent calls (e.g. a page
+ * re-fetch right after navigation) can't race into a duplicate-key error.
+ */
+export async function ensureUserRow(cookieStore: CookieStore): Promise<{ id: string } | null> {
+  const supabase = createClient(cookieStore)
+  const { data, error } = await supabase.auth.getClaims()
+
+  if (error) {
+    logger.warn({ err: error.message }, 'auth.service: getClaims failed')
+    return null
+  }
+
+  const claims = data?.claims
+  if (!claims?.sub || !claims.email) return null
+
+  const fullName =
+    (claims.user_metadata as { full_name?: string } | undefined)?.full_name ??
+    claims.email.split('@')[0]
+
+  await prisma.user.upsert({
+    where: { id: claims.sub },
+    update: {},
+    create: { id: claims.sub, email: claims.email, fullName },
+  })
+
+  return { id: claims.sub }
+}

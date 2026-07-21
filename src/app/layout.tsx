@@ -1,9 +1,11 @@
 import type { Metadata } from "next";
+import { cookies } from "next/headers";
 import { Geist, Geist_Mono, Public_Sans, Space_Grotesk } from "next/font/google";
 import { Providers } from "./providers";
 import { AuthModal } from "@/components/auth";
 import { SiteFooter } from "@/components/layout/site-footer";
 import { SiteHeader } from "@/components/layout/site-navbar";
+import { getSessionUser } from "@/services/auth.service";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -31,11 +33,18 @@ export const metadata: Metadata = {
   description: "Browse, preview, and purchase high-quality datasets for AI, ML, and analytics. Curated data across industries.",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  // Resolved server-side so the header renders the correct signed-in/out
+  // state on first paint — no client round-trip, and it re-resolves for
+  // free whenever router.refresh() re-renders the tree (e.g. right after
+  // sign-in/up), instead of waiting on a client-side getUser() call.
+  const cookieStore = await cookies();
+  const sessionUser = await getSessionUser(cookieStore);
+
   return (
     <html
       lang="en"
@@ -44,7 +53,7 @@ export default function RootLayout({
     >
       <body className="min-h-screen flex flex-col bg-[#0a0e1a] text-white font-[family-name:var(--font-geist-sans)]">
         <Providers>
-          <SiteHeader />
+          <SiteHeader initialUser={sessionUser} />
           <div className="flex-1 flex flex-col">
             {children}
           </div>

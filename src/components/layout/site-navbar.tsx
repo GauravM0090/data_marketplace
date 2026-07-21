@@ -6,9 +6,13 @@ import { BrandLogo } from '../landing/brand-logo'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import type { User } from '@supabase/supabase-js'
 import { useDatasetFacets } from '@/hooks/use-dataset-facets'
 import { useDatasetFilters, type FacetKey } from '@/stores/dataset-filters.store'
+import type { SessionUser } from '@/services/auth.service'
+// (type-only import — auth.service.ts itself, which touches next/headers and
+// Prisma, is never pulled into this client bundle)
+
+type HeaderUser = { email: string | null }
 
 /*
   Mega menu — Figma spec:
@@ -365,21 +369,36 @@ function ResourcesMenu({ close }: { close: () => void }) {
 
 /* ---------- Header ---------- */
 
-export function SiteHeader() {
+export function SiteHeader({ initialUser }: { initialUser: SessionUser | null }) {
   const { open } = useAuthModal()
-  const [user, setUser] = useState<User | null>(null)
-  const supabase = createClient()
+  const [user, setUser] = useState<HeaderUser | null>(initialUser)
+  // Created once per mount, not per render — @supabase/ssr's client isn't
+  // free to recreate: doing so in the render body (with the client in the
+  // effect's dep array) tears down and re-subscribes the auth listener on
+  // every re-render, which is what caused the header to jitter.
+  const [supabase] = useState(() => createClient())
 
   const [activeMenu, setActiveMenu] = useState<string | null>(null)
   const timeoutRef = useRef<NodeJS.Timeout | null>(null)
 
+  // Sign-in/up happen through a *server-side* Supabase client (the Server
+  // Action), so this browser client never observes them directly — the
+  // server-rendered `initialUser` is what actually carries the update,
+  // arriving for free whenever router.refresh() re-renders the layout.
+  useEffect(() => {
+    setUser(initialUser)
+  }, [initialUser])
+
+  // Fallback + live sync for auth changes this browser client DOES see
+  // directly (OAuth redirect completion, another tab signing out, token
+  // refresh). Runs once on mount — `supabase` is now a stable reference.
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => {
-      setUser(user)
+      if (user) setUser({ email: user.email ?? null })
     })
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null)
+      setUser(session?.user ? { email: session.user.email ?? null } : null)
     })
 
     return () => subscription.unsubscribe()
@@ -398,7 +417,7 @@ export function SiteHeader() {
   }
 
   return (
-    <header className="relative z-50 flex h-16 items-center justify-between bg-white px-[44px] py-3">
+    <header className="relative z-[90] flex h-16 items-center justify-between bg-white px-[44px] py-3">
       <Link href={'/'}>
         <BrandLogo />
       </Link>
@@ -441,17 +460,47 @@ export function SiteHeader() {
       )}
 
       {user ? (
-        <button
-          type="button"
-          className="flex items-center gap-2 rounded-full bg-[#EBF1FF] py-1.5 pl-1.5 pr-4 transition-colors hover:bg-blue-100"
+        <div 
+          className="relative"
+          onMouseEnter={() => handleMouseEnter('profile-menu')}
+          onMouseLeave={handleMouseLeave}
         >
-          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#0F1B3D] text-white font-semibold text-sm">
-            {user.email ? user.email.charAt(0).toUpperCase() : <UserIcon />}
-          </div>
-          <span className="font-public-sans text-sm font-semibold text-[#2563EB]">
-            My profile
-          </span>
-        </button>
+          <button
+            type="button"
+            className="flex items-center gap-2 rounded-full bg-[#EBF1FF] py-1.5 pl-1.5 pr-4 transition-colors hover:bg-blue-100"
+          >
+            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#0F1B3D] text-white font-semibold text-sm">
+              {user.email ? user.email.charAt(0).toUpperCase() : <UserIcon />}
+            </div>
+            <span className="font-public-sans text-sm font-semibold text-[#2563EB]">
+              My profile
+            </span>
+            <Chevron open={activeMenu === 'profile-menu'} />
+          </button>
+          
+          {activeMenu === 'profile-menu' && (
+            <div className="absolute right-0 mt-2 w-48 rounded-lg bg-white shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none">
+              <div className="py-1">
+                <Link
+                  href="/profile"
+                  onClick={() => setActiveMenu(null)}
+                  className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                >
+                  My Profile
+                </Link>
+                <button
+                  onClick={async () => {
+                    await supabase.auth.signOut()
+                    window.location.href = '/'
+                  }}
+                  className="block w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-gray-100"
+                >
+                  Logout
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
       ) : (
         <button
           type="button"

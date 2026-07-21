@@ -17,6 +17,7 @@ model User {
   // `jobTitle` is the user's self-described job role (e.g. "Project Manager") —
   // distinct from `role` above, which is the app permission level.
   organization String? @map("organization")
+  industry     String? @map("industry")
   jobTitle     String? @map("job_title")
 
   createdAt DateTime @default(now()) @map("created_at")
