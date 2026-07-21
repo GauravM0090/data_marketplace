@@ -1,26 +1,47 @@
-// components/landing/site-header.tsx
-// Landing-page top navigation: brand wordmark, centered nav links, and the
-// primary "Get started" CTA which opens the auth modal in place.
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { useAuthModal } from '@/stores/auth-modal.store'
 import { BrandLogo } from '../landing/brand-logo'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import type { User } from '@supabase/supabase-js'
+import { useDatasetFacets } from '@/hooks/use-dataset-facets'
+import { useDatasetFilters, type FacetKey } from '@/stores/dataset-filters.store'
+
+/*
+  Mega menu — Figma spec:
+  - Popup: 856x356, #FFF, 1px #CBD5E1, radius 16, shadow 0 2px 2px rgba(0,0,0,0.16)
+  - Anchored left-center under the header (not under the trigger link)
+  - Left rail: 270px, border-right #CBD5E1, 24px padding, tabs 44px h,
+      padding 10px 16px, radius 8, Public Sans 500 16/24,
+      active: bg #DBEAFE text #2565EB — inactive: #616161
+  - Cards: 2 cols, 24px gaps, 64px h, padding 8, gap 16, radius 8
+      icon 48x48 #D3E0FB radius 8
+      title 500 16/24 #181818, subtitle 400 12/16 #616161
+      hover/active: 0.5px #2563EB border + 0 2px 10px rgba(26,111,202,0.25)
+  - Footer (right column only): border-top #CBD5E1, padding 24px 0,
+      Public Sans 500 14/20 — #616161 left, #2565EB right
+*/
 
 const NAV_LINKS = [
-  { label: 'Browse Datasets', href: '/datasets', hasMenu: true },
-  { label: 'How it works', href: '#how-it-works', hasMenu: false },
-  { label: 'Customize Dataset', href: '#customize', hasMenu: false },
-  { label: 'Resources', href: '#resources', hasMenu: true },
+  { label: 'Browse Datasets', href: '/datasets', hasMenu: true, id: 'browse' },
+  { label: 'How it works', href: '#how-it-works', hasMenu: false, id: 'how' },
+  { label: 'Customize Dataset', href: '#customize', hasMenu: false, id: 'customize' },
+  { label: 'Resources', href: '#resources', hasMenu: true, id: 'resources' },
 ] as const
 
-function Chevron() {
+function Chevron({ open }: { open?: boolean }) {
   return (
-    <svg width="12.5" height="6.25" viewBox="0 0 13 7" fill="none" aria-hidden="true">
-      <path d="M1 1l5.25 5L11.5 1" stroke="#616161" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round" />
+    <svg
+      width="13"
+      height="7"
+      viewBox="0 0 13 7"
+      fill="none"
+      className={`transition-transform duration-200 ${open ? 'rotate-180 text-[#2563EB]' : 'text-[#616161]'}`}
+    >
+      <path d="M1 1l5.25 5L11.5 1" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   )
 }
@@ -33,10 +54,324 @@ function UserIcon() {
   )
 }
 
+function GridIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+      <line x1="3" y1="9" x2="21" y2="9"></line>
+      <line x1="9" y1="21" x2="9" y2="9"></line>
+    </svg>
+  )
+}
+
+/* ---------- Shared shell: left rail tabs + right item grid + footer ---------- */
+
+type MenuItem = { title: string; subtitle: string; onSelect: () => void }
+type MenuTab = { id: string; label: string; count?: number }
+
+function MegaMenuShell({
+  tabs,
+  activeTabId,
+  onTabChange,
+  items,
+  footerText,
+  footerAction,
+  onFooterClick,
+}: {
+  tabs: MenuTab[]
+  activeTabId: string
+  onTabChange: (id: string) => void
+  items: MenuItem[]
+  footerText: string
+  footerAction: string
+  onFooterClick: () => void
+}) {
+  return (
+    <div
+      className="overflow-hidden bg-white"
+      style={{
+        width: 856,
+        height: 356, // locked — content scrolls, panel never grows
+        border: '1px solid #CBD5E1',
+        boxShadow: '0px 2px 2px rgba(0, 0, 0, 0.16)',
+        borderRadius: 16,
+      }}
+      onClick={(e) => e.stopPropagation()}
+    >
+      <div className="flex h-full">
+        {/* Left rail */}
+        <div
+          className="flex h-full shrink-0 flex-col overflow-y-auto"
+          style={{ width: 270, borderRight: '1px solid #CBD5E1', padding: 24, gap: 12 }}
+        >
+          {tabs.map((tab) => {
+            const isActive = activeTabId === tab.id
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                onMouseEnter={() => onTabChange(tab.id)}
+                onClick={() => onTabChange(tab.id)}
+                className="flex w-full items-center justify-between transition-colors focus:outline-none"
+                style={{
+                  height: 44,
+                  padding: '10px 16px',
+                  borderRadius: 8,
+                  background: isActive ? '#DBEAFE' : '#FFFFFF',
+                }}
+              >
+                <span
+                  style={{
+                    fontFamily: "'Public Sans', sans-serif",
+                    fontWeight: 500,
+                    fontSize: 16,
+                    lineHeight: '24px',
+                    color: isActive ? '#2565EB' : '#616161',
+                  }}
+                >
+                  {tab.label}
+                </span>
+                {typeof tab.count === 'number' && (
+                  <span
+                    style={{
+                      fontFamily: "'Public Sans', sans-serif",
+                      fontWeight: 500,
+                      fontSize: 16,
+                      lineHeight: '24px',
+                      color: isActive ? '#2565EB' : '#616161',
+                    }}
+                  >
+                    {String(tab.count).padStart(2, '0')}
+                  </span>
+                )}
+              </button>
+            )
+          })}
+        </div>
+
+        {/* Right column — fixed height; grid scrolls, footer stays pinned */}
+        <div className="flex h-full min-w-0 flex-1 flex-col" style={{ padding: '24px 24px 0 24px' }}>
+          {/* Item grid — scrolls when options overflow */}
+          <div
+            className="grid flex-1 auto-rows-min grid-cols-2 content-start overflow-y-auto overscroll-contain"
+            style={{ gap: 24, paddingRight: 4, scrollbarWidth: 'thin' }}
+          >
+            {items.map((item) => (
+              <button
+                key={item.title}
+                type="button"
+                onClick={item.onSelect}
+                className="flex shrink-0 items-center text-left transition-all focus:outline-none hover:border-[#2563EB] hover:shadow-[0_2px_10px_rgba(26,111,202,0.25)]"
+                style={{
+                  height: 64,
+                  minHeight: 64,
+                  padding: 8,
+                  gap: 16,
+                  borderRadius: 8,
+                  border: '0.5px solid transparent',
+                  background: '#FFFFFF',
+                }}
+              >
+                <div
+                  className="flex shrink-0 items-center justify-center text-[#2563EB]"
+                  style={{ width: 48, height: 48, background: '#D3E0FB', borderRadius: 8 }}
+                >
+                  <GridIcon />
+                </div>
+                <div className="flex min-w-0 flex-col" style={{ gap: 4 }}>
+                  <span
+                    className="line-clamp-1"
+                    style={{
+                      fontFamily: "'Public Sans', sans-serif",
+                      fontWeight: 500,
+                      fontSize: 16,
+                      lineHeight: '24px',
+                      color: '#181818',
+                    }}
+                  >
+                    {item.title}
+                  </span>
+                  <span
+                    className="line-clamp-1"
+                    style={{
+                      fontFamily: "'Public Sans', sans-serif",
+                      fontWeight: 400,
+                      fontSize: 12,
+                      lineHeight: '16px',
+                      color: '#616161',
+                    }}
+                  >
+                    {item.subtitle}
+                  </span>
+                </div>
+              </button>
+            ))}
+            {items.length === 0 && (
+              <div
+                className="col-span-2 flex items-center justify-center"
+                style={{
+                  fontFamily: "'Public Sans', sans-serif",
+                  fontSize: 14,
+                  color: '#8C8C8C',
+                  minHeight: 152,
+                }}
+              >
+                Loading options...
+              </div>
+            )}
+          </div>
+
+          {/* Footer — right column only, pinned below the scroll area */}
+          <div
+            className="flex shrink-0 items-center justify-between"
+            style={{ borderTop: '1px solid #CBD5E1', padding: '24px 0' }}
+          >
+            <span
+              style={{
+                fontFamily: "'Public Sans', sans-serif",
+                fontWeight: 500,
+                fontSize: 14,
+                lineHeight: '20px',
+                color: '#616161',
+              }}
+            >
+              {footerText}
+            </span>
+            <button
+              type="button"
+              onClick={onFooterClick}
+              className="hover:underline focus:outline-none"
+              style={{
+                fontFamily: "'Public Sans', sans-serif",
+                fontWeight: 500,
+                fontSize: 14,
+                lineHeight: '20px',
+                color: '#2565EB',
+              }}
+            >
+              {footerAction}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/* ---------- Browse Datasets menu (facet-driven) ---------- */
+
+function BrowseDatasetsMenu({ close }: { close: () => void }) {
+  const router = useRouter()
+  const { data: facets } = useDatasetFacets()
+  const { clearAll, toggleFacet } = useDatasetFilters()
+  const [activeTab, setActiveTab] = useState<'industry' | 'modality' | 'useCase'>('industry')
+
+  const tabs: MenuTab[] = [
+    { id: 'industry', label: 'Domain', count: facets?.industry?.length || 0 },
+    { id: 'modality', label: 'Modality', count: facets?.modality?.length || 0 },
+    { id: 'useCase', label: 'Usecase', count: facets?.useCase?.length || 0 },
+  ]
+
+  const activeOptions = facets?.[activeTab] || []
+
+  const handleSelectOption = (value: string) => {
+    clearAll()
+    toggleFacet(activeTab as FacetKey, value)
+    close()
+    router.push('/datasets')
+  }
+
+  const handleBrowseAll = () => {
+    clearAll()
+    close()
+    router.push('/datasets')
+  }
+
+  return (
+    <MegaMenuShell
+      tabs={tabs}
+      activeTabId={activeTab}
+      onTabChange={(id) => setActiveTab(id as typeof activeTab)}
+      items={activeOptions.map((opt: { value: string; count: number }) => ({
+        title: opt.value,
+        subtitle: `${opt.count} Datasets available`,
+        onSelect: () => handleSelectOption(opt.value),
+      }))}
+      footerText="Over 200+ datasets across 30+ domains"
+      footerAction="Browse all datasets"
+      onFooterClick={handleBrowseAll}
+    />
+  )
+}
+
+/* ---------- Resources menu (static) ---------- */
+
+const RESOURCES_MENU: Record<string, { label: string; items: { title: string; subtitle: string; href: string }[] }> = {
+  company: {
+    label: 'Company',
+    items: [
+      { title: 'Case studies', subtitle: 'Customer stories, results', href: '/case-studies' },
+      { title: 'Testimonials', subtitle: 'What customers say about us', href: '/testimonials' },
+      { title: 'Careers', subtitle: 'Open roles, hiring', href: '/careers' },
+      { title: 'About us', subtitle: 'Mission, team, story', href: '/about' },
+    ],
+  },
+  support: {
+    label: 'Support',
+    items: [
+      { title: 'Help center', subtitle: 'Guides and answers', href: '/help' },
+      { title: 'Contact us', subtitle: 'Talk to our team', href: '/contact' },
+    ],
+  },
+  learn: {
+    label: 'Learn',
+    items: [
+      { title: 'Blog', subtitle: 'Product news, insights', href: '/blog' },
+      { title: 'Docs', subtitle: 'Integration guides, API', href: '/docs' },
+    ],
+  },
+}
+
+function ResourcesMenu({ close }: { close: () => void }) {
+  const router = useRouter()
+  const [activeTab, setActiveTab] = useState<keyof typeof RESOURCES_MENU>('company')
+
+  const tabs: MenuTab[] = Object.entries(RESOURCES_MENU).map(([id, group]) => ({
+    id,
+    label: group.label,
+  }))
+
+  const go = (href: string) => {
+    close()
+    router.push(href)
+  }
+
+  return (
+    <MegaMenuShell
+      tabs={tabs}
+      activeTabId={activeTab}
+      onTabChange={(id) => setActiveTab(id as keyof typeof RESOURCES_MENU)}
+      items={RESOURCES_MENU[activeTab].items.map((item) => ({
+        title: item.title,
+        subtitle: item.subtitle,
+        onSelect: () => go(item.href),
+      }))}
+      footerText="Over 200+ datasets across 30+ domains"
+      footerAction="Browse all datasets"
+      onFooterClick={() => go('/datasets')}
+    />
+  )
+}
+
+/* ---------- Header ---------- */
+
 export function SiteHeader() {
   const { open } = useAuthModal()
   const [user, setUser] = useState<User | null>(null)
   const supabase = createClient()
+
+  const [activeMenu, setActiveMenu] = useState<string | null>(null)
+  const timeoutRef = useRef<NodeJS.Timeout | null>(null)
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data: { user } }) => {
@@ -50,24 +385,60 @@ export function SiteHeader() {
     return () => subscription.unsubscribe()
   }, [supabase])
 
-  return (
-    <header className="flex h-16 items-center justify-between bg-white px-[44px] py-3">
-        <Link href={'/'}>
-      <BrandLogo />
+  const handleMouseEnter = (id: string) => {
+    if (timeoutRef.current) clearTimeout(timeoutRef.current)
+    setActiveMenu(id)
+  }
 
+  const handleMouseLeave = () => {
+    if (timeoutRef.current) clearTimeout(timeoutRef.current)
+    timeoutRef.current = setTimeout(() => {
+      setActiveMenu(null)
+    }, 150)
+  }
+
+  return (
+    <header className="relative z-50 flex h-16 items-center justify-between bg-white px-[44px] py-3">
+      <Link href={'/'}>
+        <BrandLogo />
       </Link>
-      <nav className="flex items-center gap-5">
+
+      <nav className="flex items-center gap-2">
         {NAV_LINKS.map((link) => (
-          <a
-            key={link.label}
-            href={link.href}
-            className="flex items-center gap-1 rounded px-2 py-1 font-public-sans text-sm font-medium text-[#616161] transition-colors hover:text-[#2563EB]"
+          <div
+            key={link.id}
+            onMouseEnter={() => link.hasMenu && handleMouseEnter(link.id)}
+            onMouseLeave={() => link.hasMenu && handleMouseLeave()}
           >
-            {link.label}
-            {link.hasMenu && <Chevron />}
-          </a>
+            <Link
+              href={link.href}
+              className={`flex items-center gap-1.5 rounded-lg px-4 py-2 font-public-sans text-sm font-medium transition-colors ${
+                activeMenu === link.id
+                  ? 'text-[#2563EB] bg-blue-50/50'
+                  : 'text-[#616161] hover:text-[#2563EB] hover:bg-gray-50'
+              }`}
+            >
+              {link.label}
+              {link.hasMenu && <Chevron open={activeMenu === link.id} />}
+            </Link>
+          </div>
         ))}
       </nav>
+
+      {/* Mega menus — anchored to the HEADER, left-center of the page */}
+      {(activeMenu === 'browse' || activeMenu === 'resources') && (
+        <div
+          className="absolute top-full pt-2 left-1/2 -translate-x-1/2 xl:left-[200px] xl:translate-x-0"
+          onMouseEnter={() => handleMouseEnter(activeMenu)}
+          onMouseLeave={handleMouseLeave}
+        >
+          {activeMenu === 'browse' ? (
+            <BrowseDatasetsMenu close={() => setActiveMenu(null)} />
+          ) : (
+            <ResourcesMenu close={() => setActiveMenu(null)} />
+          )}
+        </div>
+      )}
 
       {user ? (
         <button
