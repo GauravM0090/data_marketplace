@@ -1,4 +1,4 @@
-import { Hero, TrustedBy } from "@/components/landing";
+import { Hero, TrustedBy, DatasetExploreSection } from "@/components/landing";
 
 
 export default function HomePage() {
@@ -8,6 +8,7 @@ export default function HomePage() {
       <main>
         <Hero />
         <TrustedBy />
+        <DatasetExploreSection />
       </main>
     </div>
   )
