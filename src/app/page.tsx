@@ -1,4 +1,13 @@
-import { Hero, TrustedBy, DatasetExploreSection } from "@/components/landing";
+import { 
+  Hero, 
+  TrustedBy, 
+  DatasetExploreSection, 
+  FeaturesSection, 
+  HowItWorksSection,
+  SubmitRequirementsSection,
+  FaqSection,
+  ProviderCtaSection
+} from "@/components/landing";
 
 
 export default function HomePage() {
@@ -9,6 +18,11 @@ export default function HomePage() {
         <Hero />
         <TrustedBy />
         <DatasetExploreSection />
+        <FeaturesSection />
+        <HowItWorksSection />
+        <SubmitRequirementsSection />
+        <FaqSection />
+        <ProviderCtaSection />
       </main>
     </div>
   )
