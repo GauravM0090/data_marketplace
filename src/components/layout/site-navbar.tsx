@@ -3,10 +3,12 @@
 // primary "Get started" CTA which opens the auth modal in place.
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useAuthModal } from '@/stores/auth-modal.store'
 import { BrandLogo } from '../landing/brand-logo'
 import Link from 'next/link'
+import { createClient } from '@/lib/supabase/client'
+import type { User } from '@supabase/supabase-js'
 
 const NAV_LINKS = [
   { label: 'Browse Datasets', href: '/datasets', hasMenu: true },
@@ -33,8 +35,20 @@ function UserIcon() {
 
 export function SiteHeader() {
   const { open } = useAuthModal()
-  // Mock logged in state to display the "My profile" badge as requested.
-  const [isLoggedIn] = useState(true)
+  const [user, setUser] = useState<User | null>(null)
+  const supabase = createClient()
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      setUser(user)
+    })
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null)
+    })
+
+    return () => subscription.unsubscribe()
+  }, [supabase])
 
   return (
     <header className="flex h-16 items-center justify-between bg-white px-[44px] py-3">
@@ -55,13 +69,13 @@ export function SiteHeader() {
         ))}
       </nav>
 
-      {isLoggedIn ? (
+      {user ? (
         <button
           type="button"
           className="flex items-center gap-2 rounded-full bg-[#EBF1FF] py-1.5 pl-1.5 pr-4 transition-colors hover:bg-blue-100"
         >
-          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#0F1B3D]">
-            <UserIcon />
+          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#0F1B3D] text-white font-semibold text-sm">
+            {user.email ? user.email.charAt(0).toUpperCase() : <UserIcon />}
           </div>
           <span className="font-public-sans text-sm font-semibold text-[#2563EB]">
             My profile

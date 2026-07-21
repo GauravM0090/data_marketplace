@@ -74,6 +74,38 @@ export async function getDatasetById(id: string) {
   return prisma.dataset.findUnique({ where: { id } })
 }
 
+/**
+ * Fetch a single dataset by slug — full row, used server-side only
+ * (dataset detail page).
+ */
+export async function getDatasetBySlug(slug: string) {
+  return prisma.dataset.findUnique({ where: { slug } })
+}
+
+/**
+ * Fetch related datasets (similar category/industry, excluding current)
+ */
+export async function getRelatedDatasets(dataset: { id: string, category?: string | null, industry?: string | null }, limit: number = 4) {
+  const where: Prisma.DatasetWhereInput = {
+    id: { not: dataset.id },
+    ...(dataset.category || dataset.industry ? {
+      OR: [
+        ...(dataset.category ? [{ category: dataset.category }] : []),
+        ...(dataset.industry ? [{ industry: dataset.industry }] : []),
+      ]
+    } : {})
+  }
+
+  const rows = await prisma.dataset.findMany({
+    where,
+    select: CARD_SELECT,
+    orderBy: { qualityScore: 'desc' },
+    take: limit,
+  })
+  
+  return rows.map(toCard)
+}
+
 // `in` (not equals) — a multi-select facet matches a dataset whose value is any
 // of the checked options. Empty arrays are treated as "no filter".
 const inList = (values?: string[]) =>

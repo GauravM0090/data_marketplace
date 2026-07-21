@@ -80,6 +80,7 @@ export function DatasetCard({ dataset }: { dataset: DatasetCardData }) {
   const {
     id,
     title,
+    slug,
     datasetCode,
     industry,
     qualityScore,
@@ -139,7 +140,7 @@ export function DatasetCard({ dataset }: { dataset: DatasetCardData }) {
             <div className="flex items-center">
               <div className="flex -space-x-1.5">
                 {countries.slice(0, MAX_VISIBLE_COUNTRIES).map((c, i) => (
-                  <span
+                  <span 
                     key={i}
                     className="flex h-[18px] w-[18px] items-center justify-center rounded-full bg-white text-[14px] ring-2 ring-white"
                   >
@@ -177,7 +178,7 @@ export function DatasetCard({ dataset }: { dataset: DatasetCardData }) {
           Save
         </button>
         <Link
-          href={`/datasets/${id}`}
+          href={`/datasets/${slug}`}
           className="flex items-center gap-1 rounded-lg border border-[#2563EB] px-4 py-2 font-public-sans text-sm font-semibold text-[#2563EB] transition-colors hover:bg-[#EFF6FF]"
         >
           View dataset

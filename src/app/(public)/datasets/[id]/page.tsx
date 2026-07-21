@@ -1,30 +1,134 @@
 import { notFound } from 'next/navigation'
-import { getDatasetById } from '@/services/dataset.service'
-import { BuyButton } from '@/components/checkout/buy-button'
+import { getDatasetBySlug, getRelatedDatasets } from '@/services/dataset.service'
+import {
+  DatasetHeading,
+  StickyNav,
+  Specifications,
+  DataQuality,
+  PricingOptions,
+  PricingSidebar,
+  FAQSection,
+  RelatedDatasets,
+} from '@/components/each-dataset'
 
 export default async function DatasetDetailPage({
   params,
 }: {
   params: Promise<{ id: string }>
 }) {
-  const { id } = await params
-  const dataset = await getDatasetById(id)
+  const { id: slug } = await params
+  const dataset = await getDatasetBySlug(slug)
 
   if (!dataset) {
     notFound()
   }
 
-  return (
-    <main className="mx-auto max-w-3xl px-6 py-16">
-      <h1 className="text-3xl font-semibold">{dataset.title}</h1>
-      <p className="mt-4 text-white/70">{dataset.description}</p>
+  // Fetch related datasets (4 max)
+  const relatedDatasets = await getRelatedDatasets(
+    { id: dataset.id, industry: dataset.industry, category: dataset.category },
+    4
+  )
 
-      <div className="mt-8 flex items-center gap-4">
-        <span className="text-2xl font-semibold">
-          {dataset.currency} {Number(dataset.price).toFixed(2)}
-        </span>
-        <BuyButton datasetId={dataset.id} />
+  // Serialize dataset to plain JSON to avoid Decimal/BigInt issues in client components
+  const safeDataset = JSON.parse(
+    JSON.stringify(dataset, (_key, value) =>
+      typeof value === 'bigint' ? Number(value) : value
+    )
+  )
+
+  return (
+    <div className="min-h-screen bg-[#F4F7FB] text-[#181818] w-full">
+      <div className="mx-auto w-full max-w-[1200px] px-5 py-6">
+
+        {/* Breadcrumb */}
+        <div className="mb-6 flex items-center gap-2 text-sm text-[#616161]">
+          <span className="hover:text-[#181818] cursor-pointer">Home</span>
+          <span className="text-[#CBD5E1]">&gt;</span>
+          <span className="hover:text-[#181818] cursor-pointer">Marketplace</span>
+          <span className="text-[#CBD5E1]">&gt;</span>
+          <span className="font-medium text-[#181818]">{safeDataset.title}</span>
+        </div>
+
+        {/* ──── Two-column layout ──── */}
+        <div className="flex gap-6 items-start">
+
+          {/* LEFT: Main content — 748px fixed */}
+          <div className="w-[748px] shrink-0 flex flex-col gap-8 rounded-3xl border border-[#CBD5E1] bg-white p-6">
+            {/* Hero heading */}
+            <DatasetHeading dataset={safeDataset} />
+
+            {/* Sticky nav toggle */}
+            <StickyNav />
+
+            {/* Content sections — gap 64px between major groups per Figma */}
+            <div className="flex flex-col gap-16">
+              <Specifications dataset={safeDataset} />
+              <DataQuality dataset={safeDataset} />
+              <PricingOptions dataset={safeDataset} />
+              <FAQSection />
+            </div>
+          </div>
+
+          {/* RIGHT: Pricing sidebar — 420px fixed */}
+          <div className="w-[420px] shrink-0">
+            <PricingSidebar dataset={safeDataset} />
+          </div>
+        </div>
+
+        {/* ──── Enterprise Consultation Block ──── */}
+        <div
+          className="mt-12 rounded-2xl p-8 text-white flex flex-col md:flex-row items-center justify-between gap-8"
+          style={{ background: 'linear-gradient(135deg, #284BBB 0%, #002360 100%)' }}
+        >
+          <div className="flex-1">
+            <h2 className="text-2xl font-bold mb-5">Need enterprise pricing? Schedule a consultation.</h2>
+            <ul className="space-y-3">
+              <li className="flex items-center gap-2.5">
+                <CheckIcon /> Volume discounts
+              </li>
+              <li className="flex items-center gap-2.5">
+                <CheckIcon /> Multi-year terms
+              </li>
+              <li className="flex items-center gap-2.5">
+                <CheckIcon /> Dedicated manager
+              </li>
+            </ul>
+          </div>
+          <div className="flex-1 w-full max-w-md bg-white/10 p-6 rounded-xl border border-white/20">
+            <div className="mb-4">
+              <label className="block text-sm font-medium mb-1.5">Budget range</label>
+              <select className="w-full rounded-lg border border-white/20 bg-white/5 p-2.5 text-white outline-none">
+                <option className="text-black">Under $10k</option>
+                <option className="text-black">$10k - $50k</option>
+                <option className="text-black">$50k+</option>
+              </select>
+            </div>
+            <div className="mb-4">
+              <label className="block text-sm font-medium mb-1.5">Project Description</label>
+              <textarea
+                className="w-full rounded-lg border border-white/20 bg-white/5 p-2.5 text-white outline-none min-h-[100px]"
+                placeholder="Describe the AI use case you are building and what data you need..."
+              ></textarea>
+            </div>
+            <button className="w-full rounded-lg bg-[#3B82F6] px-4 py-2.5 font-semibold text-white transition-colors hover:bg-[#2563EB]">
+              Schedule call
+            </button>
+          </div>
+        </div>
+
+        {/* ──── Related Datasets — full width, 2×2 grid, gap 24px ──── */}
+        <div className="mt-12">
+          <RelatedDatasets datasets={relatedDatasets} />
+        </div>
       </div>
-    </main>
+    </div>
+  )
+}
+
+function CheckIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="20 6 9 17 4 12"></polyline>
+    </svg>
   )
 }
