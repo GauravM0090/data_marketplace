@@ -1,4 +1,4 @@
-import { Hero, SiteHeader } from '@/components/landing'
+import { Hero, SiteHeader, TrustedBy } from '@/components/landing'
 
 export default function HomePage() {
   return (
@@ -6,6 +6,7 @@ export default function HomePage() {
       <SiteHeader />
       <main>
         <Hero />
+        <TrustedBy />
       </main>
     </div>
   )
