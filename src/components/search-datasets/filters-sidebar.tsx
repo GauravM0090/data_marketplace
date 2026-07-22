@@ -154,7 +154,7 @@ export function FiltersSidebar() {
       <button
         type="button"
         onClick={() => setAdvancedOpen((v) => !v)}
-        className="flex items-center justify-center gap-1 py-1 font-public-sans text-sm text-[#8C8C8C] hover:text-[#616161]"
+        className="mt-6 flex items-center justify-center gap-1 border-t border-[#E5E5E5] pt-6 pb-1 font-public-sans text-sm text-[#8C8C8C] hover:text-[#616161]"
       >
         Advanced filters
         <svg
