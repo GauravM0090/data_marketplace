@@ -71,7 +71,7 @@ export function HowItWorksSection() {
   }, [isInView, isHovered])
 
   return (
-    <section ref={sectionRef} className="w-full bg-[#F5F8FF] py-24 border-t border-[#CBD5E1]">
+    <section id="how-it-works" ref={sectionRef} className="w-full scroll-mt-4 bg-[#F5F8FF] py-24 border-t border-[#CBD5E1]">
       <div className="mx-auto max-w-[1200px] px-5 flex flex-col items-center">
 
         <h2 className="mb-4 text-center text-3xl font-bold tracking-tight text-[#181818] md:text-4xl">

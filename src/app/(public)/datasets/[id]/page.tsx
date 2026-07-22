@@ -51,7 +51,10 @@ export default async function DatasetDetailPage({
         </div>
 
         {/* ──── Two-column layout ──── */}
-        <div className="flex gap-6 items-start">
+        {/* items-stretch (default) so the right column matches the tall left
+            column's height — that gives the sticky pricing sidebar room to
+            stay pinned all the way down instead of scrolling out of view. */}
+        <div className="flex gap-6 items-stretch">
 
           {/* LEFT: Main content — 748px fixed */}
           <div className="w-[748px] shrink-0 flex flex-col gap-8 rounded-3xl border border-[#CBD5E1] bg-white p-6">

@@ -42,8 +42,9 @@ export function SubmitRequirementsSection() {
   }
 
   return (
-    <section 
-      className="w-full text-white"
+    <section
+      id="customize"
+      className="w-full scroll-mt-4 text-white"
       style={{
         background: 'radial-gradient(69.37% 177.6% at 50% 50%, #0F1427 57.35%, #36488D 100%)',
         padding: '80px 20px',

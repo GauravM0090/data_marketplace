@@ -43,7 +43,7 @@ export function StickyNav() {
   }, [activeId])
 
   return (
-    <div className="sticky top-[80px] z-40 rounded-xl border border-[#CBD5E1] bg-white p-2.5">
+    <div className="sticky top-4 z-40 rounded-xl border border-[#CBD5E1] bg-white p-2.5">
       <div className="flex w-full items-center justify-between">
         {NAV_ITEMS.map((item) => (
           <button

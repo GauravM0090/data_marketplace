@@ -31,8 +31,10 @@ type HeaderUser = { email: string | null }
 
 const NAV_LINKS = [
   { label: 'Browse Datasets', href: '/datasets', hasMenu: true, id: 'browse' },
-  { label: 'How it works', href: '#how-it-works', hasMenu: false, id: 'how' },
-  { label: 'Customize Dataset', href: '#customize', hasMenu: false, id: 'customize' },
+  // Root-relative hashes so these jump to the landing-page sections from any
+  // route (Next routes to `/`, then scrolls to the anchored section).
+  { label: 'How it works', href: '/#how-it-works', hasMenu: false, id: 'how' },
+  { label: 'Customize Dataset', href: '/#customize', hasMenu: false, id: 'customize' },
   { label: 'Resources', href: '#resources', hasMenu: true, id: 'resources' },
 ] as const
 

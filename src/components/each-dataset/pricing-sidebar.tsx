@@ -9,7 +9,7 @@ export function PricingSidebar({ dataset }: { dataset: any }) {
   const monthlyPrice = Math.round(price / 5)
 
   return (
-    <div className="sticky top-[80px] w-full">
+    <div className="sticky top-4 w-full">
       <div className="flex flex-col gap-6 rounded-xl border border-[#CBD5E1] bg-white p-6">
         {/* Title */}
         <div>
