@@ -5,7 +5,6 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { signIn } from '@/actions/auth.actions'
 import { signInSchema, type SignInInput } from '@/validations/auth.schema'
 import { createClient } from '@/lib/supabase/client'
 import { useAuthModal } from '@/stores/auth-modal.store'
@@ -14,6 +13,12 @@ export function SignInForm() {
   const { open, close } = useAuthModal()
   const router = useRouter()
   const [showPassword, setShowPassword] = useState(false)
+  // One browser Supabase client per mount (not per render). Signing in through
+  // THIS client — not a server action — is what makes login feel instant: it
+  // updates the browser session synchronously, so the navbar's
+  // onAuthStateChange fires and flips to "My profile" immediately, instead of
+  // waiting on a server round-trip to re-render with a fresh `initialUser`.
+  const [supabase] = useState(() => createClient())
 
   // React Hook Form owns all field state + validation. Rules and messages come
   // straight from the shared Zod schema via the resolver — nothing is
@@ -26,21 +31,24 @@ export function SignInForm() {
   } = useForm<SignInInput>({ resolver: zodResolver(signInSchema) })
 
   async function onSubmit(values: SignInInput) {
-    const res = await signIn(values.email, values.password)
-    if (res?.error) {
+    const { error } = await supabase.auth.signInWithPassword({
+      email: values.email,
+      password: values.password,
+    })
+    if (error) {
       // Supabase returns a generic "Invalid login credentials" — surface it
       // under the password field, matching the design.
       setError('password', { message: 'Incorrect password. Please try again.' })
       return
     }
-    // Stay on the current route — router.refresh() re-renders the layout
-    // with the fresh server-side session, which is what updates the header.
+    // Session is live on the browser client already (navbar updates instantly
+    // via onAuthStateChange). Close the modal — the user stays on the current
+    // route — and refresh so server-rendered bits (e.g. the gated price) update.
     close()
     router.refresh()
   }
 
   async function handleGoogle() {
-    const supabase = createClient()
     const { error: oauthError } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: { redirectTo: `${window.location.origin}/auth/callback` },

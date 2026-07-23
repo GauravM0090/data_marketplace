@@ -373,6 +373,7 @@ function ResourcesMenu({ close }: { close: () => void }) {
 
 export function SiteHeader({ initialUser }: { initialUser: SessionUser | null }) {
   const { open } = useAuthModal()
+  const router = useRouter()
   const [user, setUser] = useState<HeaderUser | null>(initialUser)
   // Created once per mount, not per render — @supabase/ssr's client isn't
   // free to recreate: doing so in the render body (with the client in the
@@ -492,8 +493,13 @@ export function SiteHeader({ initialUser }: { initialUser: SessionUser | null })
                 </Link>
                 <button
                   onClick={async () => {
+                    // Sign out on the browser client → onAuthStateChange fires
+                    // and drops the header to "Get started" instantly. Stay on
+                    // the current route (no redirect) and just refresh so
+                    // server-rendered bits (e.g. the gated price) re-hide.
                     await supabase.auth.signOut()
-                    window.location.href = '/'
+                    setActiveMenu(null)
+                    router.refresh()
                   }}
                   className="block w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-gray-100"
                 >

@@ -7,7 +7,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { signUp, verifySignupOtp, updateProfile, checkEmailExists } from '@/actions/auth.actions'
+import { signUp, syncSignupName, updateProfile, checkEmailExists } from '@/actions/auth.actions'
 import { signUpSchema, profileSchema, type SignUpInput, type ProfileInput } from '@/validations/auth.schema'
 import { createClient } from '@/lib/supabase/client'
 import { useAuthModal } from '@/stores/auth-modal.store'
@@ -66,7 +66,6 @@ function CredentialsStep({ onSignUp, onLogin }: { onSignUp: (email: string) => v
     handleSubmit,
     watch,
     setError,
-    clearErrors,
     formState: { errors, isSubmitting },
   } = useForm<SignUpInput>({ resolver: zodResolver(signUpSchema) })
 
@@ -262,6 +261,10 @@ function OtpStep({ email, onVerified, onBack }: { email: string; onVerified: () 
   const [loading, setLoading] = useState(false)
   const [seconds, setSeconds] = useState(46)
   const refs = useRef<(HTMLInputElement | null)[]>([])
+  // Browser client per mount — verifying the OTP through it (not a server
+  // action) establishes the session client-side, so the navbar flips to logged
+  // in the instant the code is confirmed.
+  const [supabase] = useState(() => createClient())
 
   useEffect(() => {
     if (seconds <= 0) return
@@ -302,12 +305,18 @@ function OtpStep({ email, onVerified, onBack }: { email: string; onVerified: () 
     }
     setLoading(true)
     try {
-      const res = await verifySignupOtp(email, code)
-      if (res?.error) {
-        setError(res.error)
+      // Verify on the browser client — this establishes the session locally, so
+      // the header updates immediately (onAuthStateChange) rather than after a
+      // server round-trip.
+      const { error: verifyError } = await supabase.auth.verifyOtp({ email, token: code, type: 'signup' })
+      if (verifyError) {
+        setError(verifyError.message)
         setLoading(false)
         return
       }
+      // Best-effort: seed full_name from the email prefix for users who skip the
+      // profile step. The cookie the browser client just set is sent along.
+      await syncSignupName()
       onVerified()
     } catch {
       setError('Something went wrong. Please try again.')
@@ -318,7 +327,6 @@ function OtpStep({ email, onVerified, onBack }: { email: string; onVerified: () 
   async function handleResend() {
     if (seconds > 0) return
     try {
-      const supabase = createClient()
       const { error: resendError } = await supabase.auth.resend({ type: 'signup', email })
       if (resendError) {
         setError(resendError.message || 'Could not resend code. Please try again.')

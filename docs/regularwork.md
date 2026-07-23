@@ -1022,3 +1022,22 @@ The success page (`checkout/success/page.tsx`) was rewritten: requires a session
 - `src/services/payment.service.ts` — `retrievePayment()`
 - `src/app/(public)/checkout/success/page.tsx` — rewritten (auth + verify + download + nav)
 - `scripts/seed-binaries-from-samples.ts` — NEW (sample → private binary stopgap)
+
+---
+
+### 35. Instant Auth — Client-Side Sign-In/Verify + Stay-on-Route Logout
+
+**Problem:** login/signup felt jittery and the logged-in state lagged — the "My profile" button (and the auth-gated price) appeared a beat *after* success. **Cause:** sign-in and signup-OTP-verify ran through **server actions** using the *server-side* Supabase client. The browser's Supabase client therefore never observed the login, so the navbar's `onAuthStateChange` never fired — the header only updated after a full `router.refresh()` server round-trip (a second sequential hop after the action). So nothing was "instant".
+
+**Fix — do the session-establishing auth on the browser client:**
+- `sign-in-form.tsx` — `onSubmit` now calls `supabase.auth.signInWithPassword` on a per-mount browser client (was the `signIn` server action). The session updates locally → `onAuthStateChange` fires → the navbar flips to "My profile" **immediately**; `router.refresh()` then updates server-rendered bits (the gated price) in the background.
+- `sign-up-form.tsx` `OtpStep` — `handleConfirm` now calls `supabase.auth.verifyOtp({ type: 'signup' })` on the browser client (was `verifySignupOtp`), so the session establishes the instant the code is confirmed. Followed by a best-effort `syncSignupName()` server action.
+- `auth.actions.ts` — replaced `verifySignupOtp` with `syncSignupName()`: the OTP verify moved to the client, so this server action just seeds `full_name` from the email prefix (for users who skip the profile step), reading the cookie the browser client set. Removed the now-unused `signupOtpSchema` import. (The `signIn` server action is left in place, now unused, as a valid server-side option.)
+
+**Route preservation** was already correct (forms `close()` + `router.refresh()`, no redirect) — the client-side switch just makes it *feel* instant, confirming the user never leaves the route.
+
+**Logout now stays on the current route** (per follow-up): the navbar logout was `window.location.href = '/'` (hard redirect home). Now `supabase.auth.signOut()` → `onAuthStateChange` drops the header to "Get started" instantly → `setActiveMenu(null)` + `router.refresh()` — the user stays put and only the session is released. (On a protected route like `/profile`, the refreshed server render redirects away as before — correct.)
+
+**Verified:** `tsc --noEmit` clean; all changed files lint clean (the `site-navbar.tsx` set-state-in-effect error and the `watch()` compiler note are pre-existing, unrelated); home/`/datasets`/detail all render `200` with no compile errors. (The instant navbar update is a client-runtime behavior — validated by the architecture: client-side auth → `onAuthStateChange` → immediate `setUser`.)
+
+**Files changed:** `src/components/auth/sign-in-form.tsx`, `src/components/auth/sign-up-form.tsx`, `src/actions/auth.actions.ts`, `src/components/layout/site-navbar.tsx`.

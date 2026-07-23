@@ -14,7 +14,6 @@ import {
   signInSchema,
   forgotPasswordSchema,
   verifyResetOtpSchema,
-  signupOtpSchema, 
   profileSchema,
   type ProfileInput,
 } from '@/validations/auth.schema'
@@ -245,49 +244,35 @@ export async function verifyPasswordResetOtp(
   return { success: true }
 }
 
-export async function verifySignupOtp(email: string, token: string) {
-  const parsed = signupOtpSchema.safeParse({ email, token })
-  if (!parsed.success) {
-    logger.warn(
-      { issues: parsed.error.issues },
-      'auth.actions: verifySignupOtp validation failed'
-    )
-    return { error: parsed.error.issues[0].message }
-  }
-
+/**
+ * Best-effort display-name backfill, called right after the browser verifies the
+ * signup OTP (the client now establishes the session itself for an instant login
+ * — see sign-up-form's OtpStep). Reads the session from the cookie the browser
+ * client just set, and seeds `full_name` from the email prefix only when the DB
+ * trigger left it null (so users who skip the profile step still have a name).
+ * Entirely non-fatal — signup already succeeded on the client.
+ */
+export async function syncSignupName() {
   const cookieStore = await cookies()
-  const supabase = createClient(cookieStore)
-
-  // Confirm the signup code — on success this establishes a session (cookie).
-  const { error } = await supabase.auth.verifyOtp({
-    email: parsed.data.email,
-    token: parsed.data.token,
-    type: 'signup',
-  })
-  if (error) {
-    logger.warn({ error: error.message }, 'auth.actions: verifySignupOtp failed')
-    return { error: error.message }
+  const userId = await getSessionUserId(cookieStore)
+  if (!userId) {
+    logger.warn('auth.actions: syncSignupName — no session found')
+    return { error: 'No session.' }
   }
 
-  // Seed full_name from the email prefix if the DB trigger left it null, so the
-  // user has a sensible name even when they skip the profile step.
-  const userId = await getSessionUserId(cookieStore)
-  if (userId) {
-    const fallbackName = parsed.data.email.split('@')[0]
-    // Best-effort: only set when the trigger-created row still has a null name.
-    // Non-fatal — auth already succeeded, so don't fail verification if the
-    // `users` row/trigger isn't set up in this project's DB yet.
-    try {
+  try {
+    const user = await prisma.user.findUnique({ where: { id: userId }, select: { email: true } })
+    const fallbackName = user?.email?.split('@')[0]
+    if (fallbackName) {
       await prisma.user.updateMany({
         where: { id: userId, fullName: null },
         data: { fullName: fallbackName },
       })
-    } catch (err) {
-      logger.warn({ err: (err as Error).message, userId }, 'auth.actions: verifySignupOtp name backfill skipped')
     }
+  } catch (err) {
+    logger.warn({ err: (err as Error).message, userId }, 'auth.actions: syncSignupName skipped')
   }
 
-  logger.info({ email: parsed.data.email }, 'auth.actions: verifySignupOtp succeeded')
   return { success: true }
 }
 
