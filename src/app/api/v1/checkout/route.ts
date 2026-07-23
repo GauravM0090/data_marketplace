@@ -97,7 +97,7 @@ export async function POST(request: NextRequest) {
       datasetId: dataset.id,
       dodoProductId: dataset.dodoProductId,
       returnUrl: `${appUrl}/checkout/success?orderId=${order.id}`,
-      cancelUrl: `${appUrl}/datasets/${dataset.id}`,
+      cancelUrl: `${appUrl}/datasets/${dataset.slug}`,
     })
 
     if (!session.checkout_url) {

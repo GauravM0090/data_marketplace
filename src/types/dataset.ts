@@ -1,5 +1,27 @@
 // ─── Dataset Types ────────────────────────────────────────────
 
+import type { Dataset } from '@prisma/client'
+
+/**
+ * A full dataset row as it reaches CLIENT components on the detail page: the
+ * Prisma `Dataset` after the server component serializes it to plain JSON
+ * (BigInt → number, Decimal → string, Date → ISO string — see the
+ * `JSON.parse(JSON.stringify(...))` in `datasets/[id]/page.tsx`).
+ *
+ * Derived from the Prisma model via `Omit` so it can't drift from the schema —
+ * only the fields serialization actually changes are overridden.
+ */
+export type DatasetDetail = Omit<
+  Dataset,
+  'recordCount' | 'fileSizeBytes' | 'price' | 'createdAt' | 'updatedAt'
+> & {
+  recordCount: number | null
+  fileSizeBytes: number | null
+  price: number | string
+  createdAt: string
+  updatedAt: string
+}
+
 /**
  * Lightweight shape returned by GET /api/v1/datasets — everything the explore
  * page card renders and nothing heavier. Note the service normalizes a few DB

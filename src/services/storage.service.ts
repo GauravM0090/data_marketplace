@@ -147,3 +147,32 @@ export function getSamplePublicUrl(path: string): string {
   const { bucket } = FILE_KIND_CONFIG.sample
   return supabase.storage.from(bucket).getPublicUrl(path).data.publicUrl
 }
+
+/**
+ * Mints a short-lived signed URL to DOWNLOAD an object from a private bucket —
+ * used for the paid `binary` file, whose bucket is private, so a stored path
+ * (not a public URL) is what we sign on demand at download time. `download: true`
+ * makes the browser save the file (Content-Disposition: attachment) rather than
+ * render it. Returns `null` on failure so the caller can 404/500 cleanly.
+ */
+export async function createSignedDownloadUrl(
+  kind: DatasetFileKind,
+  path: string,
+  expiresInSeconds = 60
+): Promise<string | null> {
+  const { bucket } = FILE_KIND_CONFIG[kind]
+
+  const { data, error } = await supabase.storage
+    .from(bucket)
+    .createSignedUrl(path, expiresInSeconds, { download: true })
+
+  if (error || !data) {
+    logger.error(
+      { err: error?.message, bucket, path },
+      'storage.service: failed to create signed download URL'
+    )
+    return null
+  }
+
+  return data.signedUrl
+}

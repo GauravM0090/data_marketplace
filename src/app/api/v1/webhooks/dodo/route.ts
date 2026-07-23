@@ -1,5 +1,6 @@
 import { Webhooks } from '@dodopayments/nextjs'
 import { markOrderPaid, markOrderFailed } from '@/services/order.service'
+import { syncDatasetFromDodoProduct } from '@/services/payment.service'
 import { logger } from '@/lib/logger'
 
 /**
@@ -44,5 +45,22 @@ export const POST = Webhooks({
     }
 
     await markOrderFailed({ orderId })
+  },
+
+  onPayload: async (payload: any) => {
+    if (payload.type === 'product.updated') {
+      const productId = payload.data?.product_id
+      if (!productId) {
+        logger.warn('webhook/dodo: product.updated event missing product_id')
+        return
+      }
+
+      await syncDatasetFromDodoProduct({
+        dodoProductId: productId,
+        name: payload.data?.name,
+        priceInCents: payload.data?.price?.price,
+        currency: payload.data?.price?.currency,
+      })
+    }
   },
 })

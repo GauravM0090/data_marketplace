@@ -885,3 +885,140 @@ Datasets now go live instantly upon upload — no separate publish step is neede
 **Verified:** all 15 tests pass locally; `tsc --noEmit` + `eslint` clean on every new file; `npm ci --dry-run` confirms the lockfile is in sync; reproduced and fixed the real CI failure (confirmed via the same no-`.env` + placeholder-env-var conditions GitHub Actions runs under).
 
 **Not done yet:** no test exists for the upcoming user-onboarding feature (doesn't exist in the codebase yet) — tests for it should follow the same priority order established here: validation-schema boundaries first, then any new state-transition/idempotency logic, then route-level auth/status-code checks; skip testing UI rendering details or framework behavior.
+
+---
+
+## Session 6 — 2026-07-23
+
+### 29. `npm run db:sync-dodo` Fixed — ES Import Hoisting Broke Env Loading
+
+**Problem:** `npm run db:sync-dodo` crashed immediately with `DodoPaymentsError: The DODO_PAYMENTS_API_KEY environment variable is missing or empty` — even though the key was present in **both** `.env` and `.env.local`.
+
+**Root cause — ES module import hoisting (not a missing key):** `scripts/sync-dodo-products.ts` called `dotenv.config()` inline, written *above* the app imports with a comment claiming "BEFORE any app imports". But ES `import` statements are hoisted and evaluated before any inline statements in the same module. So the import chain — `sync-dodo-products.ts` → `payment.service.ts` → `@/lib/dodo` — ran first, and `src/lib/dodo.ts` instantiates the Dodo client at **module-eval time** (`export const dodo = ... ?? createDodoClient()`), reading `process.env.DODO_PAYMENTS_API_KEY` while it was still `undefined`. The `dotenv.config()` calls only ran afterward, too late.
+
+**Fix:**
+- **New file `scripts/load-env.ts`** — isolates `dotenv.config({ path: '.env.local' })` then `.env` (`.env.local` wins; dotenv keeps the first value it sees).
+- **`scripts/sync-dodo-products.ts`** — replaced the inline dotenv block with `import './load-env'` as the **very first import**. Because imports evaluate in source order, the env is loaded before any `src/` module is pulled in.
+
+**Rule established:** any standalone `tsx` script that touches modules which construct clients at load time must `import './load-env'` first — never rely on an inline `dotenv.config()` sitting above the imports. (Companion to the existing rule from #16: don't use the `@/` alias in scripts, it doesn't resolve outside the Next bundler.)
+
+**Verified:** `npm run db:sync-dodo -- --dry-run` now loads env (`injected env (12) from .env.local`) and runs — found 16 datasets missing `dodoProductId` and processed them all, no API-key error.
+
+**Files changed:**
+- `scripts/load-env.ts` — NEW
+- `scripts/sync-dodo-products.ts` — inline dotenv → `import './load-env'`
+
+---
+
+### 30. Dataset Samples Uploaded + Login/Payment-Gated Download Endpoints
+
+**Goal:** buyers can download the **free sample** once **logged in**, and the **paid binary** only once **logged in AND payment complete**. (Installments are deferred — one-time payment only for now.)
+
+**Part A — Sample files created & uploaded.** The 10→16 seeded datasets had `sampleUrl = null` (only "Multi-Language News Articles" had one, uploaded manually → `dataset-samples/archive.zip`, left untouched). Generated a small, theme-matched **preview** for each of the other **15** datasets and uploaded them to the public `dataset-samples` bucket at `samples/<slug>.<ext>`, then wrote the public CDN URL back to `dataset.sampleUrl`:
+- Tabular / time-series (`.csv`, `.parquet`) → a ~10-row **CSV** preview with realistic columns.
+- Text corpora (`.json`) → a ~6-record **JSON** preview.
+- Binary formats (`.zip`, `.tiff`, DICOM) → a **CSV/JSON schema preview** (a raw binary chunk isn't a useful preview; the sample shows structure/labels instead).
+- Scripts are idempotent (`upsert`) and skip the manually-set slug. Verified the public URLs return `200` (CSV rows + `application/json`).
+
+**Part B — Two download endpoints (both new).**
+- `GET /api/v1/datasets/[id]/sample` — **login-gated**. 401 if no session → 404 if dataset/sample missing → else `redirect` to the public `sampleUrl`. Samples stay in the **public** bucket (product decision): this gates the app's download path, not the object itself (a copied raw CDN URL is still reachable — the accepted trade-off for free previews).
+- `GET /api/v1/datasets/[id]/download` — **login + paid-gated**. 401 if no session → 404 if dataset/binary missing → **403 if no `paid` Order** for this user+dataset (`findPaidOrder`) → signs a **60s** download URL for the **private** `dataset-binaries` object (`createSignedDownloadUrl`, `download: true`) → writes a `Download` audit row with the buyer's real IP → redirects. Audit-write failure is logged but never blocks a paying customer.
+
+**Why the split (public sample vs private binary):** matches the existing storage design — `dataset-samples` is public (CDN preview), `dataset-binaries` is private (`binaryUrl` stores a path, signed on demand). The `Download` row is written here at real download time (not in the Dodo webhook) so `ipAddress`/`downloadedAt` reflect the buyer, not Dodo's servers.
+
+**Note:** seeded datasets have `binaryUrl = null`, so the binary endpoint correctly 404s for them — only datasets uploaded through `POST /api/v1/datasets` have a binary to serve. Front-end "Download sample" / "Download" buttons are not built yet — these are the backend endpoints they'll call.
+
+**Verified:** `tsc --noEmit` + `eslint` clean; dev server — both endpoints return `401` unauthenticated with the right messages; the new `[id]` dynamic segment does **not** shadow the static `datasets/upload-url` route (still its own `401`). Sample public URLs fetch `200`.
+
+**Files changed:**
+- `scripts/upload-samples.ts` — NEW (sample generation + upload + `sampleUrl` backfill)
+- `scripts/inspect-samples.ts` — NEW (read-only state inspector)
+- `src/services/storage.service.ts` — added `createSignedDownloadUrl()`
+- `src/services/download.service.ts` — NEW (`recordDownload` audit writer)
+- `src/app/api/v1/datasets/[id]/sample/route.ts` — NEW
+- `src/app/api/v1/datasets/[id]/download/route.ts` — NEW
+
+---
+
+### 31. Detail-Page UI Wired to Sample/Buy/Download + Installments Removed
+
+**Goal:** hook the dataset detail page's existing (static, un-wired) buttons up to the endpoints from #30, gated exactly like the API, and drop the installment option (one-time payment only for now).
+
+**Server → client sync.** The detail page (`datasets/[id]/page.tsx`) is a Server Component, so it now resolves viewer state from the auth cookie and passes two booleans down to the pricing components:
+- `isLoggedIn` = `getSessionUser(cookies())` present.
+- `owned` = `findPaidOrder(user.id, dataset.id)` exists — the **same** paid-Order check the download endpoint enforces, so the button state can never disagree with what the API will allow. (Reading cookies makes the page dynamic/per-user, which is correct — ownership isn't cacheable.)
+
+**New client hook** `src/hooks/use-dataset-actions.ts` — one place for the three actions, each gated before it hits the network so there's no flash of a raw JSON 401:
+- `downloadSample` → navigates to `GET /datasets/[id]/sample` (login-gated); opens the sign-in modal first if logged out.
+- `downloadDataset` → navigates to `GET /datasets/[id]/download` (login + paid).
+- `buy` → existing `useCreateCheckout` mutation (login-gated) → Dodo checkout redirect.
+Reuses the existing `useAuthModal` store (`open('sign-in')`) so the gate matches the navbar's auth flow.
+
+**Component changes:**
+- `pricing-sidebar.tsx` — **removed the Pay-in-full / Pay-in-installments toggle** (and its `payMode` state); now a single one-time-purchase price panel. Primary CTA is `owned ? "Download dataset" (green → downloadDataset) : "Buy now at $X" (→ buy, with pending/error states)`. "Download sample first" link → `downloadSample` (hidden when the dataset has no `sampleUrl`).
+- `pricing-options.tsx` — became a client component; "Free Sample → Download sample" → `downloadSample` (disabled + "No sample available" when absent); the packet "Buy now" → `buy`, or "Download dataset" when `owned`.
+- The sample route now appends Supabase's `?download=<name>` so the browser saves the file instead of rendering the CSV/JSON inline.
+
+**Verified:** `tsc --noEmit` clean; dev server renders `/datasets/global-e-commerce-transactions-2024` → `200`; rendered HTML confirms `One-time` present, **`Pay in installments` gone**, `Buy now` + `Download sample` present, and `Download dataset` correctly absent for a logged-out viewer (owned = false).
+
+**Known pre-existing issue (resolved in #32):** every component in `src/components/each-dataset/` typed its prop as `dataset: any`, an `@typescript-eslint/no-explicit-any` **error**. Cleaned up in #32 with a shared `DatasetDetail` type.
+
+**Files changed:**
+- `src/app/(public)/datasets/[id]/page.tsx` — compute `isLoggedIn` + `owned`, pass to pricing components; removed dead `CheckIcon`
+- `src/hooks/use-dataset-actions.ts` — NEW
+- `src/components/each-dataset/pricing-sidebar.tsx` — installments removed, actions wired
+- `src/components/each-dataset/pricing-options.tsx` — client component, actions wired
+- `src/app/api/v1/datasets/[id]/sample/route.ts` — force attachment download
+
+---
+
+### 32. Typed the `each-dataset` Components + Verified Every Dataset's Dodo Product
+
+**A — `dataset: any` → `DatasetDetail`.** Every component in `src/components/each-dataset/` typed its prop as `any` (5 `no-explicit-any` **errors** + 2 unused-var warnings across the folder). Added a shared `DatasetDetail` type in `src/types/dataset.ts` — derived from the Prisma `Dataset` via `Omit`, overriding only the fields the server component's `JSON.parse(JSON.stringify(...))` changes (BigInt→number, Decimal→string, Date→ISO string) — so it can't drift from the schema. Applied it to `heading`, `specifications`, `pricing-sidebar`, `pricing-options`. `data-quality` never read its prop, so the prop was removed (and the page call updated); also dropped its unused `React` import and the unrelated unused `err` binding in `enterprise-consultation`. **The whole folder + page now lint clean (0 errors/warnings).**
+
+**B — Dodo product verification.** New `scripts/verify-dodo-products.ts` checks that every dataset's `dodoProductId` is set AND actually resolves in Dodo (`dodo.products.retrieve`), (re)creating any that are missing or stale/invalid. Ran it: **all 16 datasets already have valid, resolvable product ids** (`pdt_...`), so nothing was recreated — confirming the earlier `db:sync-dodo` did populate them.
+
+**Note (broader lint debt, out of scope):** a full-project `eslint .` still reports ~6 pre-existing errors in unrelated files (`site-navbar.tsx` set-state-in-effect, `saved-datasets.tsx` / `submit-requirements-section.tsx` unescaped entities, `search-datasets`). Not touched — separate from this task.
+
+**Files changed:** `src/types/dataset.ts`, `src/components/each-dataset/{heading,specifications,data-quality,pricing-sidebar,pricing-options,enterprise-consultation}.tsx`, `src/app/(public)/datasets/[id]/page.tsx`, `scripts/verify-dodo-products.ts` (new).
+
+---
+
+### 33. Fixed the Checkout 500 (`sunbit`), Auth-Gated Price, Success-Page Auto-Refresh
+
+**A — Checkout was 500ing for every dataset (critical).** `POST /api/v1/checkout` failed with a Dodo **422 `INVALID_REQUEST_BODY`** — `allowed_payment_method_types` in `payment.service.ts` listed `sunbit`, which is **not a valid Dodo variant**, so Dodo rejected the entire body (an unknown variant fails deserialization before anything else). Removed `sunbit`; the remaining variants (`upi_collect`, `upi_intent`, `credit`, `debit`, `klarna`, `afterpay_clearpay`, `billie`) are all valid. **Verified live:** a real (test_mode) `createCheckoutSession()` call now returns a `checkout_url` + `session_id` — the 422 is gone.
+
+**B — Payment → order → success flow (verified end-to-end wiring).** Already correct once (A) was fixed: checkout sets `return_url = /checkout/success?orderId=…`; the `@dodopayments/nextjs` webhook `onPaymentSucceeded` → `markOrderPaid` flips the Order to `paid` (`dodoPaymentId`, `paidAt`) idempotently; `DODO_PAYMENTS_WEBHOOK_KEY` is now set in env. Enhancements: the success page now **auto-refreshes** (new `auto-refresh.tsx` client component calls `router.refresh()` every 3s for ~30s while the Order is still `pending`) so "Payment confirmed" appears without a manual reload, and shows a "Go to dataset to download" link. Fixed a latent bug: both the success link and the checkout `cancelUrl` pointed at `/datasets/{uuid}`, but the detail page routes by **slug** — now resolve/use `dataset.slug`. (Local end-to-end still needs an ngrok tunnel so Dodo can reach the webhook — pre-existing, documented.)
+
+**C — Price is now auth-gated.** Per the requirement "only send the price from the DB when the user is logged in": the detail page (`datasets/[id]/page.tsx`) now **strips `price` to `null` for logged-out viewers** before serializing (the real number never reaches the client) and also drops the private `binaryUrl` from the client payload entirely. The pricing UI (`pricing-sidebar`, `pricing-options`) shows a **blurred placeholder + "Sign in to view price"** (opens the auth modal via a new `promptSignIn` from `use-dataset-actions`) and the CTA reads "Sign in to buy" when logged out. **Verified:** logged-out render of a $89.99 dataset contains no `89.99` and shows the sign-in prompts. Price only ever appeared on the detail page — browse cards don't render it (`CARD_SELECT` has no price) — so no other surface needed changes.
+
+**Verified:** `tsc --noEmit` clean; all changed files lint clean; live Dodo checkout session succeeds; logged-out detail page hides the real price.
+
+**Files changed:** `src/services/payment.service.ts`, `src/app/api/v1/checkout/route.ts`, `src/app/(public)/checkout/success/page.tsx`, `src/app/(public)/checkout/success/auto-refresh.tsx` (new), `src/app/(public)/datasets/[id]/page.tsx`, `src/components/each-dataset/{pricing-sidebar,pricing-options}.tsx`, `src/hooks/use-dataset-actions.ts`.
+
+---
+
+### 34. Secure Success Page — Server-Side Dodo Verification + Post-Purchase Download
+
+**Problem:** After a real payment, the success page stayed stuck on "Finishing up your payment…" even though Dodo's redirect carried `status=succeeded&payment_id=pay_…`. Cause: locally Dodo **can't reach the webhook** (no tunnel), so `markOrderPaid` never ran and the page (which only read `Order.status`) never flipped. It also didn't check that the order belonged to the viewer.
+
+**Fix — verify with Dodo on the success page, gated three ways.** New `finalizePurchase({ orderId, userId, paymentId })` in `order.service.ts`:
+1. **Ownership** — the order must belong to `userId` (a guessed/leaked `orderId`, or another user's, is refused — verified: wrong user → `authorized: false`).
+2. **Payment authenticity** — if not already `paid`, retrieve the payment from Dodo (`retrievePayment` → `dodo.payments.retrieve`) and require `status === 'succeeded'` **and** its `metadata.orderId`/`metadata.userId` (set by us at checkout) to match this exact order + user. A forged `payment_id`/`status` in the URL can't unlock anything.
+3. Only then `markOrderPaid` (idempotent — safe alongside the webhook).
+
+The success page (`checkout/success/page.tsx`) was rewritten: requires a session → runs `finalizePurchase` → and **only when confirmed** renders "Payment confirmed" + a **Download dataset** link (`/api/v1/datasets/[id]/download`) plus nav buttons (View dataset / Browse more / Back home). Logged-out or unauthorized viewers get a sign-in / "order not found" shell with no download. This makes the page self-sufficient without the webhook, while the webhook stays the authoritative async path in prod.
+
+**Placeholder binaries so the download actually serves a file.** Seeded datasets had `binaryUrl = null` (no real file). New `scripts/seed-binaries-from-samples.ts` copies each dataset's public **sample** into the private `dataset-binaries` bucket at `datasets/<slug>.<ext>` and sets `binaryUrl` (+ `fileSizeBytes`). So **for now the "main dataset" download === the sample content** — swap in real binaries later by re-uploading. Ran it: all 16 datasets seeded.
+
+**Verified end-to-end with the real order from the screenshot:**
+- `finalizePurchase` → `authorized: true, paid: true`; wrong user → `authorized: false`.
+- Success page unauthenticated → shows "Please sign in", **no** download link (even with valid `orderId`/`payment_id` in the URL).
+- Signing the private binary returns **HTTP 200, `Content-Disposition: attachment`**, real CSV content — i.e. a paid user can download the full file.
+- `tsc --noEmit` + `eslint` clean on all changed files.
+
+**Files changed:**
+- `src/services/order.service.ts` — `finalizePurchase()` (ownership + Dodo verify + mark paid)
+- `src/services/payment.service.ts` — `retrievePayment()`
+- `src/app/(public)/checkout/success/page.tsx` — rewritten (auth + verify + download + nav)
+- `scripts/seed-binaries-from-samples.ts` — NEW (sample → private binary stopgap)

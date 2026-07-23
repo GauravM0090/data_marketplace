@@ -127,7 +127,33 @@ All already present in `.env` (added in an earlier session) except one:
 
 **Not yet verified** (blocked on the prerequisites above): an authenticated checkout call actually reaching Dodo and getting back a real `checkout_url`, and a real webhook delivery flipping an Order to `paid`.
 
+## Product Sync & Database Integration
+
+### Bi-Directional Synchronization Architecture
+
+1. **Backfill Existing Products (`npm run db:sync-dodo`)**:
+   - Standalone CLI script (`scripts/sync-dodo-products.ts`) that queries all existing datasets in PostgreSQL missing `dodoProductId`.
+   - Provisions each missing product in Dodo Payments using `createDatasetProduct()` and saves the generated `dodoProductId` back to the DB row.
+   - Run via: `npm run db:sync-dodo` (or `npm run db:sync-dodo -- --dry-run`).
+
+2. **Application → Dodo Payments Sync**:
+   - `updateDatasetProduct()` in `src/services/payment.service.ts` updates a product's name, price, and currency in Dodo when edits occur in the marketplace.
+
+3. **Dodo Dashboard → Database Sync (Webhooks)**:
+   - `/api/v1/webhooks/dodo` handles `onProductUpdated` events dispatched from Dodo Payments.
+   - Updates matching `Dataset` rows in PostgreSQL via `syncDatasetFromDodoProduct()` when changes (title, price, currency) are made directly in the Dodo Payments Dashboard.
+
+---
+
+## Download gating (built — 2026-07-23)
+
+Two download endpoints now gate file access (see `docs/regularwork.md` #30):
+
+- `GET /api/v1/datasets/[id]/sample` — **login only** (samples are free previews). Redirects to the public `dataset-samples` CDN URL.
+- `GET /api/v1/datasets/[id]/download` — **login + a `paid` Order** for this user+dataset (`findPaidOrder`). Signs a 60s URL for the private `dataset-binaries` object and writes a `Download` audit row (with the buyer's real IP) at actual download time — deliberately here, not in the webhook, so the IP/timestamp reflect the buyer rather than Dodo's servers.
+
 ## Not built yet
 
-- A download-serving endpoint that checks `Order.status === 'paid'` for the requesting user + dataset, then creates the actual `Download` audit row (with the real request IP) and serves/signs the file — the natural follow-up once the prerequisites above are done.
-- Dodo Product sync on **edits** — product creation on upload is now automatic, but if a seller later changes a dataset's price/title, the Dodo product won't auto-update yet.
+- **Installments** — only one-time payment is wired up; installment/subscription billing is a future feature.
+- Front-end "Download sample" / "Download dataset" buttons that call the two endpoints above (backend is ready).
+- Refund handling (`payment.refunded` → `Order.status = 'refunded'`).

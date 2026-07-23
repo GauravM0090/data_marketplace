@@ -1,5 +1,8 @@
 import { notFound } from 'next/navigation'
+import { cookies } from 'next/headers'
 import { getDatasetBySlug, getRelatedDatasets } from '@/services/dataset.service'
+import { getSessionUser } from '@/services/auth.service'
+import { findPaidOrder } from '@/services/order.service'
 import {
   DatasetHeading,
   StickyNav,
@@ -30,12 +33,33 @@ export default async function DatasetDetailPage({
     4
   )
 
+  // Resolve viewer state server-side (from the auth cookie) so the pricing UI
+  // can gate exactly like the API does: sample = login, download = login + paid.
+  // `owned` is a paid Order for this user+dataset — the same check the download
+  // endpoint enforces. Reading cookies makes this page dynamic (per-user), which
+  // is correct since ownership can't be statically cached.
+  const cookieStore = await cookies()
+  const user = await getSessionUser(cookieStore)
+  const isLoggedIn = Boolean(user)
+  const owned = user ? Boolean(await findPaidOrder(user.id, dataset.id)) : false
+
   // Serialize dataset to plain JSON to avoid Decimal/BigInt issues in client components
   const safeDataset = JSON.parse(
     JSON.stringify(dataset, (_key, value) =>
       typeof value === 'bigint' ? Number(value) : value
     )
   )
+
+  // Never ship the private binary storage path to the client — downloads go
+  // through the gated /download endpoint, which signs the URL server-side.
+  delete safeDataset.binaryUrl
+
+  // Price is auth-gated: only send it to a logged-in viewer. Logged-out users
+  // receive `null` (the real price never leaves the server) and the pricing UI
+  // blurs it behind a sign-in prompt.
+  if (!isLoggedIn) {
+    safeDataset.price = null
+  }
 
   return (
     <div className="min-h-screen bg-[#F4F7FB] text-[#181818] w-full">
@@ -67,15 +91,15 @@ export default async function DatasetDetailPage({
             {/* Content sections — gap 64px between major groups per Figma */}
             <div className="flex flex-col gap-16">
               <Specifications dataset={safeDataset} />
-              <DataQuality dataset={safeDataset} />
-              <PricingOptions dataset={safeDataset} />
+              <DataQuality />
+              <PricingOptions dataset={safeDataset} isLoggedIn={isLoggedIn} owned={owned} />
               <FAQSection />
             </div>
           </div>
 
           {/* RIGHT: Pricing sidebar — 420px fixed */}
           <div className="w-[420px] shrink-0">
-            <PricingSidebar dataset={safeDataset} />
+            <PricingSidebar dataset={safeDataset} isLoggedIn={isLoggedIn} owned={owned} />
           </div>
         </div>
 
@@ -89,13 +113,5 @@ export default async function DatasetDetailPage({
         </div>
       </div>
     </div>
-  )
-}
-
-function CheckIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <polyline points="20 6 9 17 4 12"></polyline>
-    </svg>
   )
 }

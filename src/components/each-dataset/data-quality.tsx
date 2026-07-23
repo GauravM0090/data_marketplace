@@ -1,6 +1,4 @@
-import React from 'react'
-
-export function DataQuality({ dataset }: { dataset: any }) {
+export function DataQuality() {
   return (
     <div id="data-quality" className="scroll-mt-32 flex flex-col gap-6">
       <div className="flex flex-col gap-2">

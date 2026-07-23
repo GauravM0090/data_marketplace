@@ -1,12 +1,22 @@
 'use client'
 
-import React, { useState } from 'react'
-import { cn } from '@/lib/utils'
+import { useDatasetActions } from '@/hooks/use-dataset-actions'
+import type { DatasetDetail } from '@/types/dataset'
 
-export function PricingSidebar({ dataset }: { dataset: any }) {
-  const [payMode, setPayMode] = useState<'full' | 'installment'>('full')
-  const price = dataset.price ? Number(dataset.price) : 7500
-  const monthlyPrice = Math.round(price / 5)
+export function PricingSidebar({
+  dataset,
+  isLoggedIn = false,
+  owned = false,
+}: {
+  dataset: DatasetDetail
+  isLoggedIn?: boolean
+  owned?: boolean
+}) {
+  const price = dataset.price ? Number(dataset.price) : 0
+  const hasSample = Boolean(dataset.sampleUrl)
+
+  const { promptSignIn, downloadSample, downloadDataset, buy, buying, buyError } =
+    useDatasetActions(dataset.id, isLoggedIn)
 
   return (
     <div className="sticky top-4 w-full">
@@ -19,46 +29,29 @@ export function PricingSidebar({ dataset }: { dataset: any }) {
           <h3 className="text-base font-semibold text-[#181818]">{dataset.title}</h3>
         </div>
 
-        {/* Payment Mode Toggle */}
-        <div className="grid grid-cols-2 gap-0 rounded-xl border border-[#CBD5E1] overflow-hidden">
-          <button
-            onClick={() => setPayMode('full')}
-            className={cn(
-              'flex flex-col items-start px-4 py-3 text-left transition-colors border-r border-[#CBD5E1] relative',
-              payMode === 'full' ? 'bg-[#EFF6FF]' : 'bg-white hover:bg-gray-50'
-            )}
-          >
-            <div className="flex w-full items-center justify-between">
-              <span className="text-xs text-[#616161]">Pay in full</span>
-              <div className={cn(
-                'h-4 w-4 rounded-full border-2 flex items-center justify-center',
-                payMode === 'full' ? 'border-[#2563EB]' : 'border-[#CBD5E1]'
-              )}>
-                {payMode === 'full' && <div className="h-2 w-2 rounded-full bg-[#2563EB]"></div>}
-              </div>
-            </div>
-            <span className="mt-1.5 text-2xl font-bold text-[#181818]">${price.toLocaleString()}</span>
-            <span className="text-[11px] text-[#8C8C8C] mt-0.5">Full dataset · one-time purchase</span>
-          </button>
-          <button
-            onClick={() => setPayMode('installment')}
-            className={cn(
-              'flex flex-col items-start px-4 py-3 text-left transition-colors relative',
-              payMode === 'installment' ? 'bg-[#EFF6FF]' : 'bg-white hover:bg-gray-50'
-            )}
-          >
-            <div className="flex w-full items-center justify-between">
-              <span className="text-xs text-[#616161]">Pay in installments</span>
-              <div className={cn(
-                'h-4 w-4 rounded-full border-2 flex items-center justify-center',
-                payMode === 'installment' ? 'border-[#2563EB]' : 'border-[#CBD5E1]'
-              )}>
-                {payMode === 'installment' && <div className="h-2 w-2 rounded-full bg-[#2563EB]"></div>}
-              </div>
-            </div>
-            <span className="mt-1.5 text-2xl font-bold text-[#181818]">${monthlyPrice.toLocaleString()}<span className="text-sm font-normal text-[#8C8C8C]">/month</span></span>
-            <span className="text-[11px] text-[#8C8C8C] mt-0.5">6 months · Total ${(monthlyPrice * 6).toLocaleString()}</span>
-          </button>
+        {/* Price — one-time purchase (installments coming later). Gated behind
+            auth: logged-out viewers see a blurred placeholder + sign-in prompt,
+            and the real number never reaches the client. */}
+        <div className="rounded-xl border border-[#CBD5E1] bg-[#EFF6FF] px-4 py-3">
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-[#616161]">Pay in full</span>
+            <span className="rounded-full bg-[#DBEAFE] px-2 py-0.5 text-[11px] font-medium text-[#2563EB]">
+              One-time
+            </span>
+          </div>
+          {isLoggedIn ? (
+            <span className="mt-1.5 block text-2xl font-bold text-[#181818]">${price.toLocaleString()}</span>
+          ) : (
+            <button
+              onClick={promptSignIn}
+              className="mt-1.5 flex items-center gap-2 text-left"
+              title="Sign in to view price"
+            >
+              <span className="select-none text-2xl font-bold text-[#181818] blur-[6px]">$8,888</span>
+              <span className="text-xs font-medium text-[#2563EB] hover:underline">Sign in to view price</span>
+            </button>
+          )}
+          <span className="mt-0.5 block text-[11px] text-[#8C8C8C]">Full dataset · one-time purchase</span>
         </div>
 
         {/* Feature List */}
@@ -79,15 +72,37 @@ export function PricingSidebar({ dataset }: { dataset: any }) {
           ))}
         </ul>
 
-        {/* Buy Button */}
-        <button className="flex w-full items-center justify-center gap-2.5 rounded-xl bg-[#2563EB] px-4 py-3.5 text-sm font-semibold text-white transition-colors hover:bg-[#1D4ED8]">
-          <CartIcon />
-          Buy now at ${payMode === 'full' ? price.toLocaleString() : `${monthlyPrice.toLocaleString()}/mo`}
-        </button>
+        {/* Primary CTA — Download when owned, otherwise Buy */}
+        {owned ? (
+          <button
+            onClick={downloadDataset}
+            className="flex w-full items-center justify-center gap-2.5 rounded-xl bg-[#22C55E] px-4 py-3.5 text-sm font-semibold text-white transition-colors hover:bg-[#16A34A]"
+          >
+            <DownloadIcon />
+            Download dataset
+          </button>
+        ) : (
+          <button
+            onClick={buy}
+            disabled={buying}
+            className="flex w-full items-center justify-center gap-2.5 rounded-xl bg-[#2563EB] px-4 py-3.5 text-sm font-semibold text-white transition-colors hover:bg-[#1D4ED8] disabled:opacity-60"
+          >
+            <CartIcon />
+            {buying ? 'Redirecting…' : isLoggedIn ? `Buy now at $${price.toLocaleString()}` : 'Sign in to buy'}
+          </button>
+        )}
+
+        {buyError && <p className="-mt-3 text-sm text-red-500">{buyError.message}</p>}
 
         {/* Links */}
         <div className="flex items-center justify-between">
-          <a href="#" className="text-xs text-[#2563EB] hover:underline">Download sample first</a>
+          {hasSample ? (
+            <button onClick={downloadSample} className="text-xs text-[#2563EB] hover:underline">
+              Download sample first
+            </button>
+          ) : (
+            <span className="text-xs text-[#8C8C8C]">No sample</span>
+          )}
           <a href="#" className="text-xs text-[#2563EB] hover:underline">Refund policy</a>
           <a href="#" className="text-xs text-[#2563EB] hover:underline">Data licensing terms</a>
         </div>
@@ -108,6 +123,14 @@ function CartIcon() {
       <path d="M1 1h2l1.5 8h8L14 4H4"></path>
       <circle cx="6" cy="13" r="1"></circle>
       <circle cx="12" cy="13" r="1"></circle>
+    </svg>
+  )
+}
+
+function DownloadIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M8 2v8m0 0l-3-3m3 3l3-3M3 12h10"></path>
     </svg>
   )
 }

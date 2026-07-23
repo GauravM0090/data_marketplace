@@ -14,6 +14,7 @@
     "db:migrate:deploy": "prisma migrate deploy",
     "db:studio": "prisma studio",
     "db:seed": "prisma db seed",
+    "db:sync-dodo": "tsx scripts/sync-dodo-products.ts",
     "test": "vitest run",
     "test:watch": "vitest"
   },

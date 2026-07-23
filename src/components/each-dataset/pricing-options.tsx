@@ -1,7 +1,22 @@
-import React from 'react'
+'use client'
 
-export function PricingOptions({ dataset }: { dataset: any }) {
-  const price = dataset.price ? Number(dataset.price) : 199
+import { useDatasetActions } from '@/hooks/use-dataset-actions'
+import type { DatasetDetail } from '@/types/dataset'
+
+export function PricingOptions({
+  dataset,
+  isLoggedIn = false,
+  owned = false,
+}: {
+  dataset: DatasetDetail
+  isLoggedIn?: boolean
+  owned?: boolean
+}) {
+  const price = dataset.price ? Number(dataset.price) : 0
+  const hasSample = Boolean(dataset.sampleUrl)
+
+  const { promptSignIn, downloadSample, downloadDataset, buy, buying, buyError } =
+    useDatasetActions(dataset.id, isLoggedIn)
 
   return (
     <div id="samples" className="scroll-mt-32 flex flex-col gap-6">
@@ -35,8 +50,12 @@ export function PricingOptions({ dataset }: { dataset: any }) {
           <div className="flex flex-col items-start gap-4">
             <span className="text-3xl font-bold text-[#181818]">Free</span>
             <p className="text-sm text-[#616161]">Ideal for previewing the dataset and testing basic pipeline compatibility.</p>
-            <button className="rounded-lg bg-[#22C55E] px-8 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#16A34A]">
-              Download sample
+            <button
+              onClick={downloadSample}
+              disabled={!hasSample}
+              className="rounded-lg bg-[#22C55E] px-8 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#16A34A] disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {hasSample ? 'Download sample' : 'No sample available'}
             </button>
           </div>
         </div>
@@ -63,11 +82,32 @@ export function PricingOptions({ dataset }: { dataset: any }) {
           </div>
           {/* Right: Price + CTA */}
           <div className="flex flex-col items-start gap-4">
-            <span className="text-3xl font-bold text-[#181818]">${price}</span>
+            {isLoggedIn ? (
+              <span className="text-3xl font-bold text-[#181818]">${price}</span>
+            ) : (
+              <button onClick={promptSignIn} className="flex items-center gap-2" title="Sign in to view price">
+                <span className="select-none text-3xl font-bold text-[#181818] blur-[6px]">$888</span>
+                <span className="text-xs font-medium text-[#2563EB] hover:underline">Sign in to view price</span>
+              </button>
+            )}
             <p className="text-sm text-[#616161]">Ideal for previewing the dataset and testing basic pipeline compatibility.</p>
-            <button className="rounded-lg bg-[#2563EB] px-8 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#1D4ED8]">
-              Buy now
-            </button>
+            {owned ? (
+              <button
+                onClick={downloadDataset}
+                className="rounded-lg bg-[#22C55E] px-8 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#16A34A]"
+              >
+                Download dataset
+              </button>
+            ) : (
+              <button
+                onClick={buy}
+                disabled={buying}
+                className="rounded-lg bg-[#2563EB] px-8 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#1D4ED8] disabled:opacity-60"
+              >
+                {buying ? 'Redirecting…' : isLoggedIn ? 'Buy now' : 'Sign in to buy'}
+              </button>
+            )}
+            {buyError && <p className="text-sm text-red-500">{buyError.message}</p>}
           </div>
         </div>
       </div>

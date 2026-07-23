@@ -1,4 +1,4 @@
-import React from 'react'
+import type { DatasetDetail } from '@/types/dataset'
 
 function formatCount(n: number | null | undefined): string {
   if (n == null) return '—'
@@ -7,7 +7,7 @@ function formatCount(n: number | null | undefined): string {
   return n.toLocaleString()
 }
 
-export function DatasetHeading({ dataset }: { dataset: any }) {
+export function DatasetHeading({ dataset }: { dataset: DatasetDetail }) {
   const pills = [
     dataset.recordCount ? { value: formatCount(Number(dataset.recordCount)), label: dataset.recordUnit || 'Records' } : null,
     dataset.fileSizeBytes ? { value: `${(Number(dataset.fileSizeBytes) / (1024 ** 4)).toFixed(1)} TB`, label: 'storage' } : null,

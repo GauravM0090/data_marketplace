@@ -1,4 +1,5 @@
 import React from 'react'
+import type { DatasetDetail } from '@/types/dataset'
 
 function formatCount(n: number | null | undefined): string {
   if (n == null) return '—'
@@ -7,7 +8,7 @@ function formatCount(n: number | null | undefined): string {
   return n.toLocaleString()
 }
 
-export function Specifications({ dataset }: { dataset: any }) {
+export function Specifications({ dataset }: { dataset: DatasetDetail }) {
   // Left column specs
   const leftSpecs = [
     { label: 'Dataset type', value: dataset.modality || 'IMAGE/DCOM' },

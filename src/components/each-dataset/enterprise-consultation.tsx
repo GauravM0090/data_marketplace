@@ -52,7 +52,7 @@ export function EnterpriseConsultation() {
       } else {
         alert('Failed to send request. Please try again later.')
       }
-    } catch (err) {
+    } catch {
       alert('An error occurred while sending your request.')
     } finally {
       setLoading(false)

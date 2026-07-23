@@ -1,4 +1,5 @@
 import { dodo } from '@/lib/dodo'
+import { prisma } from '@/lib/prisma'
 import { logger } from '@/lib/logger'
 
 interface CreateDatasetProductParams {
@@ -49,6 +50,106 @@ export async function createDatasetProduct(
   }
 }
 
+interface UpdateDatasetProductParams {
+  dodoProductId: string
+  title?: string
+  price?: number // major units, e.g. 149.99
+  currency?: string
+}
+
+/**
+ * Updates an existing Dodo Product when a dataset's title, price, or currency
+ * is modified in the application.
+ */
+export async function updateDatasetProduct(
+  params: UpdateDatasetProductParams
+): Promise<void> {
+  const { dodoProductId, title, price, currency } = params
+
+  logger.info({ dodoProductId }, 'payment.service: updating Dodo product')
+
+  try {
+    await dodo.products.update(dodoProductId, {
+      ...(title && { name: title }),
+      ...(price !== undefined && currency && {
+        price: {
+          type: 'one_time_price',
+          currency: currency as Parameters<typeof dodo.products.create>[0]['price']['currency'],
+          price: Math.round(price * 100),
+          discount: 0,
+          purchasing_power_parity: false,
+        },
+      }),
+    })
+
+    logger.info({ dodoProductId }, 'payment.service: Dodo product updated successfully')
+  } catch (error) {
+    logger.error({ error, dodoProductId }, 'payment.service: failed to update Dodo product')
+    throw error
+  }
+}
+
+interface SyncProductFromDodoParams {
+  dodoProductId: string
+  name?: string
+  priceInCents?: number
+  currency?: string
+}
+
+/**
+ * Syncs product changes made in the Dodo Payments Dashboard back into the database.
+ * Called when Dodo dispatches a product webhook (e.g. product.updated).
+ */
+export async function syncDatasetFromDodoProduct(
+  params: SyncProductFromDodoParams
+): Promise<boolean> {
+  const { dodoProductId, name, priceInCents, currency } = params
+
+  logger.info({ dodoProductId, name }, 'payment.service: syncing dataset from Dodo product')
+
+  const existing = await prisma.dataset.findFirst({
+    where: { dodoProductId },
+  })
+
+  if (!existing) {
+    logger.warn({ dodoProductId }, 'payment.service: no matching dataset found for dodoProductId')
+    return false
+  }
+
+  const updateData: { title?: string; price?: number; currency?: string } = {}
+  if (name) updateData.title = name
+  if (priceInCents !== undefined && priceInCents >= 0) {
+    updateData.price = priceInCents / 100
+  }
+  if (currency) updateData.currency = currency
+
+  if (Object.keys(updateData).length > 0) {
+    await prisma.dataset.update({
+      where: { id: existing.id },
+      data: updateData,
+    })
+    logger.info({ datasetId: existing.id, updateData }, 'payment.service: dataset updated from Dodo product')
+  }
+
+  return true
+}
+
+/**
+ * Retrieves a payment from Dodo by id. Used by the checkout success page to
+ * verify a payment SERVER-SIDE (status + metadata) instead of trusting the
+ * redirect's query params or waiting on the async webhook — important for local
+ * dev where Dodo can't reach the webhook without a tunnel. Returns `null` on any
+ * error (unknown id, network) so the caller treats it as "not yet verified".
+ */
+export async function retrievePayment(paymentId: string) {
+  try {
+    return await dodo.payments.retrieve(paymentId)
+  } catch (error) {
+    logger.warn({ error, paymentId }, 'payment.service: failed to retrieve payment from Dodo')
+    return null
+  }
+}
+
 interface CreateCheckoutSessionParams {
   orderId: string
   userId: string
@@ -80,6 +181,11 @@ export async function createCheckoutSession(params: CreateCheckoutSessionParams)
       metadata: { orderId, userId, datasetId },
       return_url: returnUrl,
       cancel_url: cancelUrl,
+      // Only Dodo-recognised payment-method variants may appear here — an
+      // unknown value makes Dodo reject the ENTIRE request body with a 422
+      // ("unknown variant ..."), failing checkout for every dataset. ('sunbit'
+      // was previously listed and is NOT a valid Dodo variant — it broke all
+      // checkouts.) Keep this list to variants Dodo documents/enables.
       allowed_payment_method_types: [
         'upi_collect',
         'upi_intent',
@@ -88,7 +194,6 @@ export async function createCheckoutSession(params: CreateCheckoutSessionParams)
         'klarna',
         'afterpay_clearpay',
         'billie',
-        'sunbit',
       ],
     })
 

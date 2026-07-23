@@ -1,6 +1,6 @@
 # Auth — Supabase SSR Session Management
 
-> Last updated: 30 June 2026
+> Last updated: 22 July 2026
 
 ---
 
@@ -285,12 +285,12 @@ The only React client provider mounted app-wide is TanStack Query's, in
 `sign-up-form.tsx` walks through:
 
 1. **Credentials** — email + password (RHF + `signUpSchema`; password rule "Use
-   8+ characters and one number", with a live strength hint). `signUp()` emails a
-   6-digit confirmation code.
-2. **Email OTP** — "Check your inbox" with 6 code boxes + resend countdown.
-   `verifySignupOtp(email, token)` calls `verifyOtp({ type: 'signup' })`.
-3. **Profile setup (skippable)** — Full Name / Organization / Role (`profileSchema`
-   + `updateProfile()`). All optional; `full_name` falls back to the email prefix.
+   8+ characters and one number", with a live strength hint). `signUp()` emails an
+   8-digit confirmation code.
+2. **Email OTP** — "Check your inbox" with 8 code input boxes + resend countdown.
+   `verifySignupOtp(email, token)` validates against `signupOtpSchema` (`/^\d{8}$/`) and calls `verifyOtp({ type: 'signup' })`.
+3. **Profile setup (skippable)** — Full Name / Organization / Industry / Role (`profileSchema`
+   + `updateProfile()`). All optional; `fullName` falls back to the email prefix server-side when left blank.
 
 > The `users` row is created by the Supabase `handle_new_user` trigger on signup;
 > `updateProfile` updates it. See the trigger / `updated_at` caveat in db-schema.md.
@@ -307,11 +307,11 @@ templates and is rate-limited. Full setup (Resend example, troubleshooting) is i
 There is **no** reset-password page or recovery link. Reset is a two-step OTP
 flow inside the forgot-password form:
 
-1. **Step 1 — email.** `forgotPassword(email)` calls `resetPasswordForEmail()`
+1. **Step 1 — email.** `forgotPassword(email)` validates via `forgotPasswordSchema` and calls `resetPasswordForEmail()`
    with **no `redirectTo`**, so Supabase emails the recovery `{{ .Token }}`
-   (a 6-digit code) instead of a magic link.
+   (an 8-digit code) instead of a magic link.
 2. **Step 2 — code + new password.** `verifyPasswordResetOtp(email, token,
-   newPassword)` calls `verifyOtp({ type: 'recovery' })` (establishes a session
+   newPassword)` validates via `verifyResetOtpSchema` (`/^\d{8}$/`), calls `verifyOtp({ type: 'recovery' })` (establishes a session
    in the cookie) then `updateUser({ password })`. The form closes in place.
 
 > ⚠️ The recovery email template must include `{{ .Token }}` for the code to
@@ -320,15 +320,15 @@ flow inside the forgot-password form:
 
 ### Server Actions (`src/actions/auth.actions.ts`)
 
-| Action | What it does |
-|---|---|
-| `signUp(email, password)` | Registers via Supabase Auth, emails a 6-digit confirmation code, returns `{ success }` |
-| `verifySignupOtp(email, token)` | `verifyOtp({ type: 'signup' })`; best-effort backfills `full_name` from the email prefix |
-| `updateProfile({ fullName, organization, jobTitle })` | Updates the current user's `users` row (profile step); blank `fullName` → email prefix |
-| `signIn(email, password)` | Signs in via password, returns `{ success }` — **no redirect**, the modal closes in place |
-| `signOut()` | Signs out, clears cookie, redirects to `/` |
-| `forgotPassword(email)` | Emails a 6-digit recovery code via `resetPasswordForEmail()` (no redirect) |
-| `verifyPasswordResetOtp(email, token, newPassword)` | `verifyOtp({ type: 'recovery' })` + `updateUser()`, returns `{ success }` — **no redirect** |
+| Action | Validation Schema | What it does |
+|---|---|---|
+| `signUp(email, password)` | `signUpSchema` | Registers via Supabase Auth, emails an 8-digit confirmation code, returns `{ success }` |
+| `verifySignupOtp(email, token)` | `signupOtpSchema` | `verifyOtp({ type: 'signup' })`; best-effort backfills `fullName` from the email prefix |
+| `updateProfile({ fullName, organization, industry, jobTitle })` | `profileSchema` | Updates the current user's `users` row (profile step); blank `fullName` → email prefix |
+| `signIn(email, password)` | `signInSchema` | Signs in via password, returns `{ success }` — **no redirect**, the modal closes in place |
+| `signOut()` | N/A | Signs out, clears cookie, redirects to `/` |
+| `forgotPassword(email)` | `forgotPasswordSchema` | Emails an 8-digit recovery code via `resetPasswordForEmail()` (no redirect) |
+| `verifyPasswordResetOtp(email, token, newPassword)` | `verifyResetOtpSchema` | `verifyOtp({ type: 'recovery' })` + `updateUser()`, returns `{ success }` — **no redirect** |
 
 ---
 
