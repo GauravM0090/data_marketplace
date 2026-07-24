@@ -5,6 +5,7 @@
 import Link from 'next/link'
 import type { DatasetCard as DatasetCardData } from '@/types/dataset'
 import { formatCompactNumber, formatRelativeTime, countryFlag } from '@/utils/format'
+import { SaveButton } from '@/components/ui/save-button'
 
 const MAX_VISIBLE_COUNTRIES = 3
 const MAX_VISIBLE_LANGUAGES = 2
@@ -58,11 +59,6 @@ const ICONS = {
       <path d="M9 12l2 2 4-4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   ),
-  bookmark: (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <path d="M6 3h12v18l-6-4-6 4V3z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
-    </svg>
-  ),
   chevron: (
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
       <path d="M9 5l7 7-7 7" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
@@ -76,9 +72,14 @@ const ICONS = {
   ),
 }
 
-export function DatasetCard({ dataset }: { dataset: DatasetCardData }) {
+interface DatasetCardProps {
+  dataset: DatasetCardData
+  isLoggedIn?: boolean
+  isSaved?: boolean
+}
+
+export function DatasetCard({ dataset, isLoggedIn = false, isSaved = false }: DatasetCardProps) {
   const {
-    id,
     title,
     slug,
     datasetCode,
@@ -170,13 +171,12 @@ export function DatasetCard({ dataset }: { dataset: DatasetCardData }) {
       </div>
 
       <div className="flex items-center justify-between border-t border-[#F0F0F0] pt-4">
-        <button
-          type="button"
-          className="flex items-center gap-1.5 font-public-sans text-sm font-medium text-[#616161] hover:text-[#181818]"
-        >
-          {ICONS.bookmark}
-          Save
-        </button>
+        <SaveButton
+          datasetId={dataset.id}
+          initialSaved={isSaved}
+          isLoggedIn={isLoggedIn}
+          variant="light"
+        />
         <Link
           href={`/datasets/${slug}`}
           className="flex items-center gap-1 rounded-lg border border-[#2563EB] px-4 py-2 font-public-sans text-sm font-semibold text-[#2563EB] transition-colors hover:bg-[#EFF6FF]"

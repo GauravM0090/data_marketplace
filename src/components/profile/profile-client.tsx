@@ -6,6 +6,7 @@ import { ProfileSidebar } from './profile-sidebar'
 import { AccountInfoForm } from './account-info-form'
 import { SecuritySettings } from './security-settings'
 import { SavedDatasets } from './saved-datasets'
+import type { DatasetCard } from '@/types/dataset'
 
 interface ProfileClientProps {
   user: {
@@ -15,10 +16,31 @@ interface ProfileClientProps {
     industry: string | null
     jobTitle: string | null
   }
+  savedDatasets?: (DatasetCard & { savedAt: string })[]
 }
 
-export function ProfileClient({ user }: ProfileClientProps) {
+export function ProfileClient({ user, savedDatasets = [] }: ProfileClientProps) {
   const [activeTab, setActiveTab] = useState('Account info')
+
+  function handleTabChange(tab: string) {
+    setActiveTab(tab)
+
+    // For Security and Saved datasets, scroll to the section if we're on Account info
+    if (tab === 'Security') {
+      setActiveTab('Account info')
+      setTimeout(() => {
+        document.getElementById('security-section')?.scrollIntoView({ behavior: 'smooth' })
+      }, 50)
+      return
+    }
+    if (tab === 'Saved datasets') {
+      setActiveTab('Account info')
+      setTimeout(() => {
+        document.getElementById('wishlist-section')?.scrollIntoView({ behavior: 'smooth' })
+      }, 50)
+      return
+    }
+  }
 
   return (
     <div className="mx-auto w-full max-w-7xl px-4 py-8 md:px-8">
@@ -30,19 +52,17 @@ export function ProfileClient({ user }: ProfileClientProps) {
       <div className="flex flex-col gap-12 lg:flex-row">
         {/* Left Sidebar */}
         <aside className="w-full shrink-0 lg:w-64">
-          <ProfileSidebar activeTab={activeTab} onTabChange={setActiveTab} />
+          <ProfileSidebar activeTab={activeTab} onTabChange={handleTabChange} />
         </aside>
 
         {/* Right Content */}
         <main className="flex-1">
           {activeTab === 'Account info' && (
-            <AccountInfoForm user={user} />
-          )}
-          {activeTab === 'Security' && (
-            <SecuritySettings />
-          )}
-          {activeTab === 'Saved datasets' && (
-            <SavedDatasets />
+            <>
+              <AccountInfoForm user={user} />
+              <SecuritySettings />
+              <SavedDatasets initialDatasets={savedDatasets} />
+            </>
           )}
           
           {/* Placeholder for other tabs */}

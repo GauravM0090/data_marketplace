@@ -1,4 +1,5 @@
 import type { DatasetDetail } from '@/types/dataset'
+import { SaveButton } from '@/components/ui/save-button'
 
 function formatCount(n: number | null | undefined): string {
   if (n == null) return '—'
@@ -7,7 +8,13 @@ function formatCount(n: number | null | undefined): string {
   return n.toLocaleString()
 }
 
-export function DatasetHeading({ dataset }: { dataset: DatasetDetail }) {
+interface DatasetHeadingProps {
+  dataset: DatasetDetail
+  isLoggedIn?: boolean
+  isSaved?: boolean
+}
+
+export function DatasetHeading({ dataset, isLoggedIn = false, isSaved = false }: DatasetHeadingProps) {
   const pills = [
     dataset.recordCount ? { value: formatCount(Number(dataset.recordCount)), label: dataset.recordUnit || 'Records' } : null,
     dataset.fileSizeBytes ? { value: `${(Number(dataset.fileSizeBytes) / (1024 ** 4)).toFixed(1)} TB`, label: 'storage' } : null,
@@ -24,10 +31,12 @@ export function DatasetHeading({ dataset }: { dataset: DatasetDetail }) {
             {dataset.datasetCode && <><span>{dataset.datasetCode}</span><span className="mx-1 inline-block h-1 w-1 rounded-full bg-[#7EE0D6]"></span></>}
             <span>{dataset.industry || dataset.category || 'General'}</span>
           </span>
-          <button className="flex items-center gap-1 rounded-md bg-white/10 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-white/20">
-            <BookmarkIcon className="h-5 w-5" />
-            Save
-          </button>
+          <SaveButton
+            datasetId={dataset.id}
+            initialSaved={isSaved}
+            isLoggedIn={isLoggedIn}
+            variant="dark"
+          />
         </div>
 
         {/* Title + Description */}
@@ -49,13 +58,5 @@ export function DatasetHeading({ dataset }: { dataset: DatasetDetail }) {
         )}
       </div>
     </div>
-  )
-}
-
-function BookmarkIcon({ className }: { className?: string }) {
-  return (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round" className={className}>
-      <path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z"></path>
-    </svg>
   )
 }

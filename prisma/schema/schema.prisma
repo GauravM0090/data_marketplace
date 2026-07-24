@@ -27,9 +27,10 @@ model User {
   updatedAt DateTime @updatedAt @default(now()) @map("updated_at")
 
   // Relations
-  datasets  Dataset[]
-  orders    Order[]
-  downloads Download[]
+  datasets      Dataset[]
+  orders        Order[]
+  downloads     Download[]
+  savedDatasets SavedDataset[]
 
   @@map("users")
 }
@@ -88,8 +89,9 @@ uploadedBy User? @relation(fields: [uploadedByUserId], references: [id], onDelet
   updatedAt   DateTime @updatedAt @map("updated_at")
 
   // Relations
-  orders      Order[]
-  downloads   Download[]
+  orders        Order[]
+  downloads     Download[]
+  savedByUsers  SavedDataset[]
 
   @@index([industry])
   @@index([category])
@@ -157,4 +159,20 @@ model Download {
   @@index([orderId])
 
   @@map("downloads")
+}
+
+// ─── Saved Datasets (Wishlist / Bookmarks) ──────────────────
+model SavedDataset {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  datasetId String   @map("dataset_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  dataset Dataset @relation(fields: [datasetId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, datasetId])
+  @@index([userId])
+  @@index([datasetId])
+  @@map("saved_datasets")
 }

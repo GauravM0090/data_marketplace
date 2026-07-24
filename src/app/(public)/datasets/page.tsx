@@ -8,11 +8,19 @@
 // which sticks at the same top-0 — shows through and sits level with the search
 // bar, while the DatasetResults grid scrolls underneath.
 
+import { cookies } from 'next/headers'
+import { getSessionUserId } from '@/services/auth.service'
+import { getSavedDatasetIds } from '@/actions/saved-dataset.actions'
 import { ExploreSearchHeader } from '@/components/search-datasets/explore-search-header'
 import { FiltersSidebar } from '@/components/search-datasets/filters-sidebar'
 import { DatasetResults } from '@/components/search-datasets/dataset-results'
 
-export default function DatasetsPage() {
+export default async function DatasetsPage() {
+  const cookieStore = await cookies()
+  const userId = await getSessionUserId(cookieStore)
+  const isLoggedIn = Boolean(userId)
+  const savedIds = await getSavedDatasetIds()
+
   return (
     <div className="flex min-h-screen flex-col bg-[#F5F7FA] text-[#181818]">
       <ExploreSearchHeader />
@@ -23,7 +31,7 @@ export default function DatasetsPage() {
         </aside>
 
         <main className="flex-1 pb-16">
-          <DatasetResults />
+          <DatasetResults isLoggedIn={isLoggedIn} savedDatasetIds={Array.from(savedIds)} />
         </main>
       </div>
     </div>

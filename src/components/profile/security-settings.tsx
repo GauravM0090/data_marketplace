@@ -1,10 +1,13 @@
 'use client'
 
 import React from 'react'
+import { useAuthModal } from '@/stores/auth-modal.store'
 
 export function SecuritySettings() {
+  const { open } = useAuthModal()
+
   return (
-    <div className="mt-12">
+    <div className="mt-12" id="security-section">
       <h2 className="mb-2 text-xl font-semibold text-gray-900">Security</h2>
       <p className="mb-6 text-sm text-gray-500">Manage how you sign in and who can access your account.</p>
 
@@ -16,7 +19,10 @@ export function SecuritySettings() {
             <h3 className="font-medium text-gray-900">Password</h3>
             <p className="mt-1 text-sm text-gray-500">Last changed Jan 14, 2026</p>
           </div>
-          <button className="rounded-lg border border-blue-500 px-4 py-2 text-sm font-semibold text-blue-600 transition-colors hover:bg-blue-50">
+          <button
+            onClick={() => open('forgot-password')}
+            className="rounded-lg border border-blue-500 px-4 py-2 text-sm font-semibold text-blue-600 transition-colors hover:bg-blue-50"
+          >
             Change password
           </button>
         </div>

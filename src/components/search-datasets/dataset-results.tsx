@@ -77,7 +77,14 @@ function Pagination({
   )
 }
 
-export function DatasetResults() {
+export function DatasetResults({
+  isLoggedIn = false,
+  savedDatasetIds = [],
+}: {
+  isLoggedIn?: boolean
+  savedDatasetIds?: string[]
+}) {
+  const savedSet = new Set(savedDatasetIds)
   const { data, isPending, isError, isPlaceholderData } = useDatasets()
   const page = useDatasetFilters((s) => s.page)
   const setPage = useDatasetFilters((s) => s.setPage)
@@ -111,7 +118,12 @@ export function DatasetResults() {
         }`}
       >
         {data?.datasets.map((dataset) => (
-          <DatasetCard key={dataset.id} dataset={dataset} />
+          <DatasetCard
+            key={dataset.id}
+            dataset={dataset}
+            isLoggedIn={isLoggedIn}
+            isSaved={savedSet.has(dataset.id)}
+          />
         ))}
       </div>
 

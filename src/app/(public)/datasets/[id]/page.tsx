@@ -3,6 +3,7 @@ import { cookies } from 'next/headers'
 import { getDatasetBySlug, getRelatedDatasets } from '@/services/dataset.service'
 import { getSessionUser } from '@/services/auth.service'
 import { findPaidOrder } from '@/services/order.service'
+import { isDatasetSaved } from '@/actions/saved-dataset.actions'
 import {
   DatasetHeading,
   StickyNav,
@@ -42,6 +43,8 @@ export default async function DatasetDetailPage({
   const user = await getSessionUser(cookieStore)
   const isLoggedIn = Boolean(user)
   const owned = user ? Boolean(await findPaidOrder(user.id, dataset.id)) : false
+  const savedResult = await isDatasetSaved(dataset.id)
+  const isSaved = savedResult.saved
 
   // Serialize dataset to plain JSON to avoid Decimal/BigInt issues in client components
   const safeDataset = JSON.parse(
@@ -83,7 +86,7 @@ export default async function DatasetDetailPage({
           {/* LEFT: Main content — 748px fixed */}
           <div className="w-[748px] shrink-0 flex flex-col gap-8 rounded-3xl border border-[#CBD5E1] bg-white p-6">
             {/* Hero heading */}
-            <DatasetHeading dataset={safeDataset} />
+            <DatasetHeading dataset={safeDataset} isLoggedIn={isLoggedIn} isSaved={isSaved} />
 
             {/* Sticky nav toggle */}
             <StickyNav />
