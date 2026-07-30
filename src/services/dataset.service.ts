@@ -178,9 +178,13 @@ export async function getPublishedDatasets(
   )
 
   try {
-    // findMany + count run in the same transaction so total stays consistent
-    // with the page of results even if rows change between the two queries.
-    const [rows, total] = await prisma.$transaction([
+    // Two independent read-only queries run concurrently. We deliberately do NOT
+    // wrap them in prisma.$transaction(): on Supabase's transaction-mode pooler a
+    // transaction pins a server connection for its whole BEGIN..COMMIT, which under
+    // connection pressure gets queued by PgBouncer and trips the 5s transaction
+    // timeout (P2028). The tiny consistency window between the two queries is
+    // irrelevant for a paginated listing.
+    const [rows, total] = await Promise.all([
       prisma.dataset.findMany({
         where,
         select: CARD_SELECT,
