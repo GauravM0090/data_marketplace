@@ -36,7 +36,7 @@ Your App                          Dodo Payments
    page reads Order status directly from the DB and shows paid / pending
 ```
 
-**Note on Downloads:** the webhook does **not** create a `Download` row. That table's `ipAddress` + `downloadedAt` columns are about the moment a file is actually downloaded by the buyer's browser — a webhook arrives from Dodo's servers, not the buyer, so creating one there would record the wrong IP and conflate "paid" with "downloaded". Gating the actual file download behind `Order.status === 'paid'` is a separate, not-yet-built endpoint (see "Not built yet" below).
+**Note on Downloads:** the webhook does **not** create a `Download` row. That table's `ipAddress` + `downloadedAt` columns are about the moment a file is actually downloaded by the buyer's browser — a webhook arrives from Dodo's servers, not the buyer, so creating one there would record the wrong IP and conflate "paid" with "downloaded". Gating the actual file download behind `Order.status === 'paid'` is handled by a separate endpoint — `GET /api/v1/datasets/[id]/download` — which is **built** and writes the `Download` row at real download time (see the Status Summary below).
 
 ---
 
@@ -213,7 +213,7 @@ Two download endpoints now gate file access (see `docs/regularwork.md` #30):
 | **Checkout** | `POST /api/v1/checkout` — auth-gated, looks up price server-side, blocks re-purchase, creates a pending `Order`, creates the Dodo session, returns `checkoutUrl`. Verified working (unauth → 401; detail page renders Buy button). |
 | **Webhook receiving** | `POST /api/v1/webhooks/dodo` — signature-verified via `@dodopayments/nextjs`; `payment.succeeded` → `markOrderPaid`, `payment.failed` → `markOrderFailed`, `product.updated` → `syncDatasetFromDodoProduct`. Idempotent (duplicate deliveries are no-ops). |
 | **Product sync** | Auto-create on upload (`createDatasetProduct`), edit sync (`updateDatasetProduct`), backfill CLI (`npm run db:sync-dodo`), and dashboard→DB sync via the `product.updated` webhook. |
-| **Download gating** | `GET …/sample` (login-only) and `GET …/download` (login + a `paid` Order). Signs a 60s private URL and writes a `Download` audit row with the buyer's real IP at download time. |
+| **Download gating** | `GET …/sample` (login-only) and `GET …/download` (login + a `paid` Order). Signs a 60s private URL and writes a `Download` audit row with the buyer's real IP at download time. **Front-end "Download sample" / "Download dataset" buttons are wired** (`use-dataset-actions.ts` → pricing sidebar/options + the checkout success page). |
 | **Success page** | `/checkout/success?orderId=` reads the Order straight from the DB and shows paid vs. still-confirming. |
 
 ### ⏳ Blocked only on manual dashboard steps (code is ready)
@@ -226,8 +226,7 @@ Two download endpoints now gate file access (see `docs/regularwork.md` #30):
 
 | Feature | Notes for whoever picks it up |
 |---|---|
+| **Installment activation on the Dodo product** | ⏳ **Pending.** Only one-time payment is active. Enabling installment/pay-in-parts billing has to be turned on **per product in the Dodo dashboard** (and the checkout/`Order` handling extended to track installment plans). Not done yet. |
 | **Refunds** | Handle `payment.refunded` → `Order.status = 'refunded'`. Add the event to the webhook subscription (A2.3) and a `markOrderRefunded` in `order.service.ts`. `refunded` already exists in the status lifecycle. |
-| **Installments / subscriptions** | Only one-time payment is wired. Dodo supports subscription products — would need a new product type + `Order`/billing model. |
 | **Multi-dataset cart** | Today it's one dataset per `Order` (`Order.datasetId` is a single FK). A cart needs a new `OrderItem` line-items table + migration. |
-| **Front-end download buttons** | The two download endpoints exist and are gated; the "Download sample" / "Download dataset" buttons that call them aren't wired into the detail page yet. |
 | **Discounts owned by us** | Currently Dodo owns discount math (codes entered on Dodo's hosted page) so the webhook amount always equals the charged amount. Revisit only if custom/promotional pricing logic is needed on our side. |
