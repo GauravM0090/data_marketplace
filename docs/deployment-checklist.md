@@ -91,6 +91,15 @@ Run these manually after each deployment:
 
 ## CI/CD Pipeline
 
+> **Handover note — no formal Gitflow / branching workflow is set up.** There is
+> no enforced Gitflow (no `develop`/`release`/`hotfix` branch model, no required
+> PR reviews or protected-branch gates, no automated release process). For the
+> team size and stage so far this added more ceremony than value, so work has gone
+> **feature branch → PR → `main` → Vercel auto-deploy** informally. The flow below
+> is the recommended convention, not something the tooling currently enforces —
+> formalising Gitflow + branch protection is a reasonable next step as the team
+> grows.
+
 ### What runs where
 
 | Check | Runs on | Where it's defined | Catches |
