@@ -1,6 +1,6 @@
 # Datasets & Explore Flow — End-to-End Architecture & Technical Specification
 
-> Last updated: 22 July 2026
+> Last updated: 30 July 2026
 
 ---
 
@@ -41,7 +41,7 @@ flowchart TD
     end
 
     subgraph CacheDB ["Caching & Database Layer"]
-        I -->|unstable_cache 60s tag: datasets| J[prisma.$transaction]
+        I -->|unstable_cache 60s tag: datasets| J[Promise.all - two concurrent reads]
         J --> K1[prisma.dataset.findMany - Card Projection & Skip/Take]
         J --> K2[prisma.dataset.count - Filtered Count]
         K1 & K2 -->|Raw SQL to Postgres| L[(PostgreSQL DB)]
@@ -208,11 +208,11 @@ function buildDatasetWhere(params: DatasetsQueryParams): Prisma.DatasetWhereInpu
 }
 ```
 
-#### 2. Atomic Transaction Query
-To prevent race conditions where total item count changes between fetching records and fetching counts, both queries are executed concurrently in a single Prisma transaction:
+#### 2. Concurrent Read Queries (`Promise.all`, not a transaction)
+The page of rows and the total count are fetched **concurrently** with `Promise.all`:
 
 ```ts
-const [rows, total] = await prisma.$transaction([
+const [rows, total] = await Promise.all([
   prisma.dataset.findMany({
     where,
     select: CARD_SELECT, // Lightweight projection returning only card fields
@@ -223,6 +223,14 @@ const [rows, total] = await prisma.$transaction([
   prisma.dataset.count({ where }),
 ])
 ```
+
+> **Why not `prisma.$transaction([...])`?** These are read-only queries and the
+> tiny consistency window between them is irrelevant for a listing page. On
+> Supabase's **transaction-mode pooler** (`:6543`), a `$transaction` pins a server
+> connection for the whole `BEGIN…COMMIT`; under connection pressure PgBouncer
+> queues it and it can trip the 5s transaction timeout (`P2028`). `Promise.all`
+> holds no transaction, so that failure mode disappears. (This was previously a
+> `$transaction` — changed after a real `P2028` stall in dev.)
 
 #### 3. Response & Pagination Metadata
 The route handler computes total pages and returns JSON:

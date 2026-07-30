@@ -10,6 +10,130 @@ This project uses **Supabase Auth with `@supabase/ssr`** for authentication.
 The session is stored in **HTTP cookies**, not localStorage or sessionStorage.
 The `proxy.ts` file at the project root is responsible for reading, validating, and refreshing the session on every request.
 
+Users can authenticate **two ways**, both handled by Supabase Auth:
+
+1. **Email + password** with an **8-digit OTP code** for email confirmation and password reset (no magic links).
+2. **Google** (social login / OAuth) — "Continue with Google".
+
+---
+
+## ⭐ Auth Setup From Scratch (Handover Guide)
+
+> This section takes a brand-new environment (a fresh Supabase project) and makes
+> **both** login methods work. It is split into two layers:
+>
+> - **Part A — Dashboard setup** (no coding — anyone can follow the clicks)
+> - **Part B — How it works in the code** (for the developer)
+>
+> Do Part A once per environment (once for your dev Supabase project, once for
+> prod). The code in Part B never changes between environments — only the
+> dashboard values and env vars do.
+
+### Part A — Dashboard setup (click-by-click)
+
+#### A1. Create / open the Supabase project
+
+1. Go to **https://supabase.com/dashboard** → **New project** (or open the existing one).
+2. Note two values you'll need later (**Project Settings → API**):
+   - **Project URL** → e.g. `https://errcihirsaoaochhkvbm.supabase.co` → env var `NEXT_PUBLIC_SUPABASE_URL`
+   - **Publishable / anon key** (`sb_publishable_…` or the `anon` JWT) → env vars `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` + `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+   - **Service role key** (secret, under "Project API keys") → env var `SUPABASE_SERVICE_ROLE_KEY` — **server/seed only, never ship to the browser.**
+3. Get the **database connection strings** (**Project Settings → Database → Connection string**):
+   - **Transaction pooler** (port `6543`) → `DATABASE_URL` (append `?pgbouncer=true`)
+   - **Session pooler** (port `5432`) → `DIRECT_URL` (used only by `prisma migrate`)
+   > ⚠️ If the DB password contains special characters (`@ : / ? # %`), **URL-encode them** in the connection string (e.g. `@` → `%40`). An un-encoded `@` in the password can be mis-parsed as the host separator.
+
+#### A2. Turn on Email login + the OTP code flow
+
+1. **Authentication → Providers → Email** → make sure **Email** is enabled and **"Confirm email"** is **ON** (this is what forces a verification code on signup).
+2. **Authentication → Emails → SMTP Settings** → configure **custom SMTP**. This is **required**, not optional — Supabase's built-in mailer is rate-limited, only emails org members, and **won't let you edit the templates**. Full example (Resend) with troubleshooting lives in **[environment-setup.md → Supabase Auth Emails](environment-setup.md)**.
+3. **Authentication → Emails → Templates** → in **"Confirm signup"** and **"Reset Password"**, put the token in the body so the email carries the **code** instead of a link:
+   ```html
+   <h2>Your verification code</h2>
+   <h1>{{ .Token }}</h1>
+   ```
+   > Without `{{ .Token }}` the email is a magic-link and the 8 OTP boxes in the UI can never be satisfied.
+4. **Authentication → URL Configuration**:
+   - **Site URL:** `http://localhost:3000` (dev) / `https://yourdomain.com` (prod)
+   - **Redirect URLs:** add `http://localhost:3000/**` (dev) / `https://yourdomain.com/**` (prod). The `/**` wildcard lets the OAuth callback (`/auth/callback`) resolve.
+
+#### A3. Google OAuth — get a Client ID + Secret and wire it into Supabase
+
+This is the part that isn't obvious. There are **three** places involved: Google Cloud Console (issues the credentials), the Supabase dashboard (stores them), and your app's redirect URLs.
+
+**Step 1 — Google Cloud Console: create the OAuth credentials**
+
+1. Go to **https://console.cloud.google.com** → create or select a **project** (top bar).
+2. **APIs & Services → OAuth consent screen**:
+   - **User type: External** → Create.
+   - Fill **App name**, **User support email**, **Developer contact email**.
+   - **Scopes:** add `.../auth/userinfo.email`, `.../auth/userinfo.profile`, and `openid` (these are the defaults Google offers — email + profile is all we need).
+   - While the app is in **"Testing"** mode, only **Test users** you list here can sign in. Add your own email as a test user, or click **Publish app** to allow anyone.
+3. **APIs & Services → Credentials → Create Credentials → OAuth client ID**:
+   - **Application type: Web application.**
+   - **Name:** anything (e.g. "Macgence Marketplace Web").
+   - **Authorized JavaScript origins:** `http://localhost:3000` and `https://yourdomain.com`.
+   - **Authorized redirect URIs — this is the critical one.** Put the **Supabase** callback here, NOT your app's URL:
+     ```
+     https://<YOUR-PROJECT-REF>.supabase.co/auth/v1/callback
+     ```
+     e.g. `https://errcihirsaoaochhkvbm.supabase.co/auth/v1/callback`.
+     > 🔑 The single most common mistake: people put `http://localhost:3000/auth/callback` here. That's wrong. Google must redirect to **Supabase** first; Supabase then redirects to your app. Get the exact URL from the next step (Supabase shows it to you).
+   - Click **Create** → copy the **Client ID** and **Client Secret**.
+
+**Step 2 — Supabase: enable the Google provider**
+
+1. **Authentication → Providers → Google** → toggle **Enable**.
+2. Paste the **Client ID** and **Client Secret** from Step 1.
+3. Supabase displays the exact **"Callback URL (for OAuth)"** on this same screen — copy it and confirm it matches what you pasted into Google's *Authorized redirect URIs* in Step 1. They must be identical.
+4. **Save.**
+
+**Step 3 — confirm the app redirect allow-list**
+
+Make sure `http://localhost:3000/**` (and the prod URL) are in **Authentication → URL Configuration → Redirect URLs** (from A2.4) — the app tells Supabase to bounce the finished session back to `/auth/callback`, and that destination has to be allow-listed.
+
+> **Per-environment reminder:** dev and prod are **separate** Supabase projects and **separate** Google OAuth clients. Do A3 twice — once with `localhost` URLs against your dev project, once with the real domain against prod.
+
+### Part B — How it works in the code (developer)
+
+Nothing above requires code changes — the wiring already exists. Here's the full round-trip so you can debug it:
+
+```
+1. User clicks "Continue with Google"  (sign-in-form.tsx / sign-up-form.tsx)
+     supabase.auth.signInWithOAuth({
+       provider: 'google',
+       options: { redirectTo: `${window.location.origin}/auth/callback` },
+     })
+        ↓  browser is redirected to Google's consent screen
+2. Google authenticates the user, then redirects to SUPABASE:
+     https://<ref>.supabase.co/auth/v1/callback?code=...
+        ↓  Supabase validates with Google using the stored Client ID/Secret
+3. Supabase redirects back to OUR app (the `redirectTo` from step 1):
+     http://localhost:3000/auth/callback?code=...
+        ↓
+4. src/app/auth/callback/route.ts (GET) runs:
+     - reads ?code
+     - supabase.auth.exchangeCodeForSession(code)  → sets the sb-<ref>-auth-token cookie
+     - redirects to /  (now logged in; navbar updates via onAuthStateChange)
+```
+
+| Piece | File | Role |
+|---|---|---|
+| "Continue with Google" button + `signInWithOAuth` | `src/components/auth/sign-in-form.tsx`, `src/components/auth/sign-up-form.tsx` | Kicks off the OAuth redirect; `redirectTo` points at our callback |
+| OAuth callback handler | `src/app/auth/callback/route.ts` | Exchanges the `?code` for a session cookie via `exchangeCodeForSession`, then redirects home. On missing/failed code it logs and redirects to `/` |
+| Session cookie + everything after | `proxy.ts`, `server.ts`, `client.ts` | Identical to the password flow — once the cookie is set, Google users are indistinguishable from password users |
+
+> **Why a `code` and not a token?** This is the PKCE / authorization-code flow. Supabase hands the browser a short-lived `code`; only the server-side callback route exchanges it for the real session, so the tokens never sit in a URL the browser history can leak.
+
+**Common Google-login failures & what they mean**
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| `redirect_uri_mismatch` on Google's screen | The `Authorized redirect URI` in Google ≠ the Supabase callback URL | Copy the exact callback from Supabase → Providers → Google into Google Cloud → Credentials |
+| Lands back on `/` still logged out | App's `/auth/callback` not in Supabase Redirect URLs, or `exchangeCodeForSession` failed | Add `http://localhost:3000/**` to URL Configuration; check server logs for `auth/callback: exchange failed` |
+| `Error 403: access_denied` | App still in Google "Testing" mode and the user isn't a listed test user | Add them as a Test user, or Publish the consent screen |
+| Works local, fails prod | Prod uses a different Supabase project / Google client that wasn't configured | Repeat Part A A3 for the prod project + domain |
+
 ---
 
 ## Why Cookies, Not localStorage?

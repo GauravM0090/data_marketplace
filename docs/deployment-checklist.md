@@ -34,7 +34,7 @@
   - [ ] Includes `..._user_updated_at_default` (DB default on `users.updated_at`)
 - [ ] `prisma generate` run against latest schema
 - [ ] No schema drift between local and production DB
-- [ ] RLS policies verified for all tables in Supabase Dashboard
+- [ ] _(Future)_ Role-based RLS policies — **not implemented yet**; authorization is enforced in the app layer (`getSessionUser` + route role checks). See [architecture-overview/db-schema.md → Authorization](./architecture-overview/db-schema.md)
 - [ ] **`handle_new_user` trigger exists on `auth.users`** in the prod project —
   it creates the `public.users` row on signup and is **not** in the Prisma
   migrations (created by hand in Supabase). Without it, signups don't get a
@@ -55,7 +55,7 @@
 - [ ] **`{{ .Token }}` in the Confirm signup + Reset password templates** (so the
   email contains the 6-digit code, not a link)
 - [ ] **Confirm email ON** (Auth → Providers → Email)
-- [ ] RLS enabled on all tables
+- [ ] **Google OAuth** provider enabled with prod Client ID/Secret + the Supabase callback in Google's Authorized redirect URIs (see [auth.md → Google OAuth](./auth.md))
 - [ ] Service role key not exposed in any client-side code
 
 ### 5. Vercel Deployment
@@ -143,6 +143,49 @@ env:
   DIRECT_URL: postgresql://user:password@localhost:5432/db
   DATABASE_URL: postgresql://user:password@localhost:5432/db
 ```
+
+---
+
+## Production Notes — CORS & JWT
+
+> Handover note (covers "remaining issues related to CORS policies or JWT
+> authentication in production"). **No outstanding CORS or JWT bugs are known at
+> handover.** This section records how each works so a future issue is easy to
+> place.
+
+### CORS
+
+- **App API routes (`/api/v1/*`) are same-origin.** The Next.js frontend and its
+  API routes are served from the **same Vercel domain**, so browser requests to
+  our own API are not cross-origin — **no custom CORS headers are configured or
+  needed**, and none are set in the code.
+- **Supabase** (Auth, Storage, REST) manages its own CORS and allows browser calls
+  from any origin using the anon/publishable key — nothing to configure app-side.
+- **Dodo** checkout is a **redirect** to Dodo's hosted page (not a cross-origin
+  fetch), and the webhook is a **server-to-server POST** — neither involves browser
+  CORS.
+- ⚠️ CORS only becomes relevant if a **separate frontend/domain** (or the
+  `data.macgence.com` VPS) starts calling these API routes directly from the
+  browser. At that point add explicit `Access-Control-*` headers (per-route or via
+  `next.config.ts` `headers()`), scoped to the allowed origin — do **not** use `*`
+  with credentials.
+
+### JWT authentication
+
+- Sessions are **Supabase-issued JWTs stored in an HTTP cookie** (`@supabase/ssr`),
+  not localStorage. `proxy.ts` refreshes them on every request.
+- Verification is **local** via `getClaims()` (WebCrypto + cached JWKS) — no
+  network call. The signature can't be forged, so it's safe for identity checks.
+- **App role is read from the DB, not the JWT.** The JWT's `role` claim is always
+  the Postgres role `authenticated`; our `user`/`seller`/`admin` role comes from
+  the `users` row via `getSessionUser`. Any future move to role-based RLS needs the
+  app role surfaced into the JWT (custom access-token hook) — see db-schema.md.
+- **Common prod pitfalls to check first** if auth misbehaves after deploy:
+  - `NEXT_PUBLIC_APP_URL` wrong → OAuth/redirect + cookie domain issues.
+  - Supabase **URL Configuration** Site/Redirect URLs not set to the prod domain
+    → OAuth "redirect not allowed" / session not established.
+  - Clock skew or a rotated Supabase JWT secret → `getClaims()` rejects tokens
+    (users appear logged out). Re-check keys match the prod project.
 
 ---
 

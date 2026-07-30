@@ -40,6 +40,58 @@ Your App                          Dodo Payments
 
 ---
 
+## ⭐ Dodo Dashboard Setup (Handover Guide)
+
+> Layered like the auth guide: **Part A** is dashboard clicks anyone can follow;
+> **Part B** is what the code does with those values. Do Part A once for the
+> **test** environment and again for **live** when you go to production — they are
+> separate Dodo environments with separate keys.
+
+### Part A — Dashboard setup (click-by-click)
+
+#### A1. Get your API key
+
+1. Log in at **https://app.dodopayments.com** (use the **Test mode** toggle for sandbox).
+2. **Developer → API Keys → Create API Key** → copy it into env var **`DODO_PAYMENTS_API_KEY`**.
+3. Set **`DODO_PAYMENTS_ENVIRONMENT`** to `test_mode` (sandbox) or `live_mode` (production). The key and this flag must belong to the **same** environment.
+
+#### A2. Set up the webhook endpoint + secret
+
+1. **Developer → Webhooks → Add Endpoint.**
+2. **Endpoint URL:**
+   - **Production:** `https://yourdomain.com/api/v1/webhooks/dodo`
+   - **Local dev:** Dodo can't reach `localhost`, so run a tunnel first:
+     ```bash
+     ngrok http 3000
+     # then use the https URL ngrok prints, e.g.
+     # https://ab12-34-56.ngrok-free.app/api/v1/webhooks/dodo
+     ```
+3. **Subscribe to events:** `payment.succeeded`, `payment.failed`, and `product.updated` (the three the route handles).
+4. Copy the endpoint's **Signing secret** (`whsec_…`) into env var **`DODO_PAYMENTS_WEBHOOK_KEY`**.
+   > ⚠️ This one is **mandatory to boot the route.** `Webhooks({ webhookKey: '' })` throws `Secret can't be empty` at module load, so `/api/v1/webhooks/dodo` returns 500 on every request until it's filled in.
+
+#### A3. Make sure each dataset has a Dodo **Product**
+
+Dodo charges against a **Product**, so every purchasable dataset needs a `dodoProductId`. There are three ways this gets set — you normally don't create products by hand:
+
+| How a dataset gets its product | When |
+|---|---|
+| **Auto-created on upload** — `createDatasetProduct()` runs inside `POST /api/v1/datasets` | Any dataset created through the normal upload flow. Nothing to do. |
+| **Backfill script** — `npm run db:sync-dodo` provisions a product for every dataset missing one and writes the id back | For datasets that predate the integration (e.g. the 10 seeded ones). Run `npm run db:sync-dodo -- --dry-run` first to preview. |
+| **Manual fallback** — set `DODO_TEST_PRODUCT_ID` in `.env` | Quick way to make one seeded dataset buyable without running the backfill. |
+
+### Part B — How it works in the code (developer)
+
+| Value from the dashboard | Env var | Read by | Used for |
+|---|---|---|---|
+| API key | `DODO_PAYMENTS_API_KEY` | `src/lib/dodo.ts` (`bearerToken`) | Authenticating every SDK call (create checkout session, create/update product) |
+| Environment flag | `DODO_PAYMENTS_ENVIRONMENT` | `src/lib/dodo.ts` (`environment`) | Points the SDK at Dodo sandbox vs live. Defaults to `test_mode` |
+| Webhook signing secret | `DODO_PAYMENTS_WEBHOOK_KEY` | `src/app/api/v1/webhooks/dodo/route.ts` | HMAC-verifying that an inbound webhook really came from Dodo (401 if not) |
+
+The `dodo` client is a **singleton** (same pattern as `lib/prisma.ts`) so hot-reload doesn't spawn many clients. The webhook route delegates signature verification + payload validation to the `@dodopayments/nextjs` `Webhooks()` adapter — our code only runs after it's verified, and only touches the `orders` row.
+
+---
+
 ## Architecture decisions
 
 Dodo offers three ways to integrate (Next.js adapter, raw TypeScript SDK, calling your own routes from the frontend) — these aren't alternatives to pick one of, they're different layers:
@@ -152,8 +204,30 @@ Two download endpoints now gate file access (see `docs/regularwork.md` #30):
 - `GET /api/v1/datasets/[id]/sample` — **login only** (samples are free previews). Redirects to the public `dataset-samples` CDN URL.
 - `GET /api/v1/datasets/[id]/download` — **login + a `paid` Order** for this user+dataset (`findPaidOrder`). Signs a 60s URL for the private `dataset-binaries` object and writes a `Download` audit row (with the buyer's real IP) at actual download time — deliberately here, not in the webhook, so the IP/timestamp reflect the buyer rather than Dodo's servers.
 
-## Not built yet
+## Status Summary — Done vs. Future Scope (Handover)
 
-- **Installments** — only one-time payment is wired up; installment/subscription billing is a future feature.
-- Front-end "Download sample" / "Download dataset" buttons that call the two endpoints above (backend is ready).
-- Refund handling (`payment.refunded` → `Order.status = 'refunded'`).
+### ✅ Done (implemented + committed)
+
+| Area | State |
+|---|---|
+| **Checkout** | `POST /api/v1/checkout` — auth-gated, looks up price server-side, blocks re-purchase, creates a pending `Order`, creates the Dodo session, returns `checkoutUrl`. Verified working (unauth → 401; detail page renders Buy button). |
+| **Webhook receiving** | `POST /api/v1/webhooks/dodo` — signature-verified via `@dodopayments/nextjs`; `payment.succeeded` → `markOrderPaid`, `payment.failed` → `markOrderFailed`, `product.updated` → `syncDatasetFromDodoProduct`. Idempotent (duplicate deliveries are no-ops). |
+| **Product sync** | Auto-create on upload (`createDatasetProduct`), edit sync (`updateDatasetProduct`), backfill CLI (`npm run db:sync-dodo`), and dashboard→DB sync via the `product.updated` webhook. |
+| **Download gating** | `GET …/sample` (login-only) and `GET …/download` (login + a `paid` Order). Signs a 60s private URL and writes a `Download` audit row with the buyer's real IP at download time. |
+| **Success page** | `/checkout/success?orderId=` reads the Order straight from the DB and shows paid vs. still-confirming. |
+
+### ⏳ Blocked only on manual dashboard steps (code is ready)
+
+1. **Fill `DODO_PAYMENTS_WEBHOOK_KEY`** — until set, the webhook route 500s (`Secret can't be empty`). See A2 above.
+2. **Give seeded datasets a Dodo product** — run `npm run db:sync-dodo`, or set `DODO_TEST_PRODUCT_ID`.
+3. **End-to-end paid round-trip** — needs an `ngrok` tunnel so Dodo can reach the local webhook. Once #1–#3 are done, a real payment flipping an Order to `paid` can be verified.
+
+### 🔭 Future scope (not built)
+
+| Feature | Notes for whoever picks it up |
+|---|---|
+| **Refunds** | Handle `payment.refunded` → `Order.status = 'refunded'`. Add the event to the webhook subscription (A2.3) and a `markOrderRefunded` in `order.service.ts`. `refunded` already exists in the status lifecycle. |
+| **Installments / subscriptions** | Only one-time payment is wired. Dodo supports subscription products — would need a new product type + `Order`/billing model. |
+| **Multi-dataset cart** | Today it's one dataset per `Order` (`Order.datasetId` is a single FK). A cart needs a new `OrderItem` line-items table + migration. |
+| **Front-end download buttons** | The two download endpoints exist and are gated; the "Download sample" / "Download dataset" buttons that call them aren't wired into the detail page yet. |
+| **Discounts owned by us** | Currently Dodo owns discount math (codes entered on Dodo's hosted page) so the webhook amount always equals the charged amount. Revisit only if custom/promotional pricing logic is needed on our side. |

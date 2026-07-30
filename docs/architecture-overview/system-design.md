@@ -82,12 +82,12 @@ POST /api/webhooks/dodo  →  verify signature  →  upsert Order (status=paid)
 
 ### Auth
 
-- Email/password and magic link out of the box via Supabase Auth
+- **Email/password with 8-digit OTP** (signup confirm + password reset — no magic links) **and Google OAuth**, via Supabase Auth. Full detail: [../auth.md](../auth.md)
 - Role is a `text` field on the `users` table — three values: `'user'`, `'seller'`, `'admin'`
-- `middleware.ts` reads the Supabase session cookie on every request and gates `/profile/*`, `/admin/*`, and `/account/*`
-- Guest browsing is fully public — login wall appears only at purchase or sample download
-- After login, user is redirected back via `?next=` param in the URL
-- Sellers get access to dataset management and meet slot hosting on top of regular user access
+- `proxy.ts` (the renamed middleware) reads the Supabase session cookie on every request and gates `/admin/*` and `/account/*`, redirecting to `/login?next=…` when absent
+- Guest browsing is fully public — login wall appears only at purchase or sample/download
+- Role/ownership checks happen **in the route/action layer** via `getSessionUser` (not the proxy, which only checks that a session exists)
+- Sellers get dataset management on top of regular user access *(create/upload built; broader seller tooling is future)*
 
 ### How the Supabase CDN Works
 
@@ -114,17 +114,23 @@ This means thumbnails and sample files are globally fast with zero extra setup. 
 | `dataset-samples` | Public CDN | Free preview files, no login needed |
 | `dataset-binaries` | Private | Full datasets, signed URL only, 1h TTL |
 
-### Row-Level Security (RLS)
+### Row-Level Security (RLS) — ⚠️ future work, not yet implemented
 
-All tables have RLS enabled. Policies:
+> Role-based RLS is **not implemented yet** — work so far focused on the `user`
+> role. Authorization today is enforced in the **application layer**
+> (`getSessionUser` + role/ownership checks in each route), **not** by Postgres
+> policies. See [db-schema.md → Authorization: Current State vs. Future Work](db-schema.md)
+> for the full plan (custom access-token hook to expose the app role, service-role
+> for webhook/audit writes, etc.).
 
-- `datasets` — anyone can SELECT published rows; `seller_id = auth.uid()` or `role=admin` can INSERT/UPDATE their own rows; only admin can DELETE
-- `orders` — `auth.uid() = user_id` for SELECT/INSERT; no user can UPDATE their own order status (only service role key via webhook)
-- `downloads` — `auth.uid() = user_id` for SELECT; INSERT only via service role (download route handler)
-- `users` — users can read/update their own row only; admin can read all
-- `meet_slots` — any auth user can SELECT non-booked slots; only host or admin can INSERT/UPDATE/DELETE
-- `meet_bookings` — `auth.uid() = booker_id` for SELECT/INSERT; host and admin can SELECT + UPDATE status
-- `issues` — `auth.uid() = reporter_id` for SELECT/INSERT; assignee and admin can SELECT + UPDATE; no deletes
+**Target policies once RLS is enabled** (design draft — the owner column on `datasets` is `uploaded_by_user_id`, not `seller_id`):
+
+- `datasets` — anyone can SELECT; `uploaded_by_user_id = auth.uid()` or `role=admin` can INSERT/UPDATE their own; only admin can DELETE
+- `orders` — `auth.uid() = user_id` for SELECT/INSERT; status UPDATE only via service role (webhook)
+- `downloads` — `auth.uid() = user_id` for SELECT; INSERT only via service role (download route)
+- `saved_datasets` — `auth.uid() = user_id` for SELECT/INSERT/DELETE
+- `users` — users read/update their own row only; admin can read all
+- `meet_slots` / `meet_bookings` / `issues` — *(planned tables, not in the schema yet — see db-schema.md)*
 
 ---
 
@@ -384,9 +390,9 @@ export default logger
 - Subscriptions: recurring access plan via Dodo subscription API
 
 ### Epic 5 — Admin Panel
-- Dataset CRUD: create, edit, delete, publish/unpublish
-- Image + binary upload via `POST /api/upload`
-- Stats overview: total datasets, orders, revenue
+- Dataset CRUD: create (built), edit/delete (planned). **No publish/unpublish** — datasets are live on create (`is_published` removed)
+- Binary/sample upload via the **two-step signed-URL flow** (`POST /api/v1/datasets/upload-url` → direct-to-Storage → `POST /api/v1/datasets`), not a through-the-server `POST /api/upload`
+- Stats overview: total datasets, orders, revenue (planned)
 
 ### Epic 6 — Post Purchase
 - `/account/orders` — full purchase history

@@ -1,75 +1,66 @@
 # API Contracts — Dataset Marketplace
 
-> Last updated: June 2025
+> Last updated: 30 July 2026
+> ✅ = route exists in `src/app/api/**` today · 🔧 = planned, not built yet.
 
-All route handlers return a standard `ApiResponse<T>` wrapper:
+**Response shapes are not fully standardised yet.** Newer routes (checkout,
+download, upload-url, POST datasets) use a `{ success, data }` / `{ success, error }`
+envelope; the older list routes return bare `{ datasets, pagination }` or
+`{ facets }` and `{ error }`. A single `ApiResponse<T>` wrapper is the *intended*
+convention:
 
 ```ts
-// types/api.ts
 export type ApiResponse<T> =
   | { success: true; data: T }
   | { success: false; error: string; code?: string }
 ```
 
+> Auth model: protected routes call `getSessionUser(cookieStore)` and do the role
+> check **in code** (see [../auth.md](../auth.md)). RLS is not enforcing this at the
+> DB yet — see [db-schema.md → Authorization](db-schema.md).
+
 ---
 
 ## All Endpoints
 
-### Dataset Endpoints
-
-| Endpoint | Access | Epic | Purpose |
-|---|---|---|---|
-| `GET /api/v1/datasets` | Public | 2 | Paginated + filtered dataset list |
-| `POST /api/v1/datasets/upload-url` | Admin / Seller | 5 | Mint a signed URL to upload a dataset file directly to Storage |
-| `POST /api/v1/datasets` | Admin / Seller | 5 | Create dataset listing (JSON metadata + storage paths) |
-| `PUT /api/datasets/[id]` | Admin / Owner Seller | 5 | Update dataset |
-| `DELETE /api/datasets/[id]` | Admin / Owner Seller | 5 | Delete dataset |
-| `POST /api/contact` | Public | 0 | Contact form — send email |
-
-> **File uploads do NOT go through the API.** Large dataset binaries (up to multi-GB) would blow past the Vercel serverless request-body limit. Instead the client uploads files **directly** to Supabase Storage using a short-lived signed URL minted by `POST /api/v1/datasets/upload-url`, then sends only the resulting storage paths to `POST /api/v1/datasets`. The old through-the-server `POST /api/upload` is removed.
-
-### Payment Endpoints _(Future — Epic 3)_
+### ✅ Dataset endpoints (built)
 
 | Endpoint | Access | Purpose |
 |---|---|---|
-| `POST /api/payments/create-session` | Auth | Create Dodo Payments checkout session |
-| `POST /api/webhooks/dodo` | Dodo (signed) | Verify webhook, update order status |
-| `GET /api/download/[id]` | Auth + paid order | Generate signed URL for purchased dataset |
+| `GET /api/v1/datasets` | Public | Paginated + filtered dataset list |
+| `GET /api/v1/datasets/facets` | Public | Distinct values + counts for sidebar facets (industry, modality, useCase, licenseType) |
+| `POST /api/v1/datasets/upload-url` | Seller / Admin | Mint a signed URL to upload a dataset file directly to Storage |
+| `POST /api/v1/datasets` | Seller / Admin | Create dataset listing (JSON metadata + storage paths) |
+| `GET /api/v1/datasets/[id]/sample` | Auth | Redirect to the public sample file (login-gated preview) |
+| `GET /api/v1/datasets/[id]/download` | Auth + paid Order | Sign a 60s URL for the private binary + write a `Download` audit row |
+| `POST /api/v1/contact` | Public | Contact / data-requirement form → sends email via Resend |
 
-### Profile Endpoints
+> **File uploads do NOT go through the API.** Large binaries (up to multi-GB) would blow past the Vercel serverless request-body limit. The client uploads **directly** to Supabase Storage via a short-lived signed URL from `POST /api/v1/datasets/upload-url`, then sends only the storage paths to `POST /api/v1/datasets`.
 
-| Endpoint | Access | Purpose |
-|---|---|---|
-| `GET /api/profile/me` | Auth | Current user profile + role-specific data |
-| `PATCH /api/profile/me` | Auth | Update name, avatar, bio |
+> **Contact-form handover TODO:** `POST /api/v1/contact` emails via Resend and does **not** persist to any table. Two values are hardcoded in the route and must be changed for production: the `to:` recipient (`your-email@example.com`) and the `from:` sender (`onboarding@resend.dev` → your verified domain). Without `RESEND_API_KEY` it returns `{ success: true, simulated: true }` and sends nothing.
 
-### Scheduling Endpoints
-
-| Endpoint | Access | Purpose |
-|---|---|---|
-| `GET /api/schedule/[hostId]/slots` | Public | Get all available (non-booked) slots for a host |
-| `POST /api/schedule/[hostId]/slots` | Seller / Admin | Create a new availability slot |
-| `DELETE /api/schedule/slots/[id]` | Owner / Admin | Delete a slot (only if not yet booked) |
-| `POST /api/schedule/[hostId]/book` | Auth | Book an available slot |
-| `PATCH /api/schedule/bookings/[id]` | Host / Admin | Confirm or cancel a booking |
-| `GET /api/schedule/bookings/mine` | Auth | My upcoming bookings (as booker or host) |
-
-### Issues Endpoints
+### ✅ Payment & download endpoints (built) — see [../dodopayments.md](../dodopayments.md)
 
 | Endpoint | Access | Purpose |
 |---|---|---|
-| `GET /api/issues` | Admin | All issues — filterable by status, priority, category |
-| `GET /api/issues/mine` | Auth | Issues I reported |
-| `GET /api/issues/assigned` | Seller / Admin | Issues assigned to me |
-| `GET /api/issues/[id]` | Reporter / Assignee / Admin | Single issue detail |
-| `POST /api/issues` | Auth | Open a new issue |
-| `PATCH /api/issues/[id]` | Reporter / Assignee / Admin | Update status, assign, add resolution notes |
+| `POST /api/v1/checkout` | Auth | Create a `pending` Order + Dodo-hosted checkout session; returns `checkoutUrl` |
+| `POST /api/v1/webhooks/dodo` | Dodo (signed) | Verify signature, flip Order → `paid`/`failed`, sync `product.updated` |
+| `GET /api/v1/datasets/[id]/download` | Auth + paid Order | (listed above) the actual purchase-gated download |
 
-### Admin Analytics Endpoint
+> The old planned paths `POST /api/payments/create-session`, `POST /api/webhooks/dodo`, and `GET /api/download/[id]` were **superseded** by the `…/v1/…` routes above. The detailed "Future" sections lower in this doc are kept for historical context but the **built** contract is the one here + in dodopayments.md.
+
+### 🔧 Planned endpoints (NOT built yet)
+
+None of the following have a route in `src/app/api/**` yet. Shapes below the fold are **design drafts**.
 
 | Endpoint | Access | Purpose |
 |---|---|---|
-| `GET /api/admin/analytics` | Admin | Platform-wide stats: revenue, orders, datasets, users |
+| `PUT /api/v1/datasets/[id]` | Owner Seller / Admin | Update a dataset |
+| `DELETE /api/v1/datasets/[id]` | Owner Seller / Admin | Delete a dataset |
+| `GET /api/v1/profile/me` · `PATCH …` | Auth | Profile + role data *(today profile reads go through Server Components, not an API route)* |
+| `GET/POST/DELETE /api/v1/schedule/**` | mixed | Calendly-style meet slots + bookings *(no `meet_*` tables yet)* |
+| `GET/POST/PATCH /api/v1/issues/**` | mixed | Support issues *(no `issues` table yet)* |
+| `GET /api/v1/admin/analytics` | Admin | Platform-wide stats |
 
 ---
 
@@ -154,7 +145,9 @@ Required: `title`, `description`, `industry`, `category`, `price`. `binaryPath` 
 
 ---
 
-## GET /api/profile/me
+> 🔧 **The sections below (`/api/profile/me`, `/api/schedule/**`, `/api/issues/**`, `/api/admin/analytics`) are design drafts — those routes are NOT built yet.** Profile data today is read in Server Components via `getSessionUser` + Prisma, not through an API route. Kept here as the intended contract for whoever builds them.
+
+## GET /api/profile/me 🔧 _(planned)_
 
 Returns current user's profile and role-specific data in a single call.
 
@@ -335,40 +328,36 @@ Platform-wide aggregate stats. Admin only.
 
 ---
 
-## POST /api/payments/create-session _(Epic 3 — Future)_
+## POST /api/v1/checkout ✅ _(built — supersedes the old `/api/payments/create-session`)_
 
-Creates a DodoPayments checkout session for a dataset purchase.
+Starts a Dodo-hosted checkout for a single dataset. Auth required.
 
 **Request:**
 ```json
-{
-  "datasetId": "uuid-of-the-dataset"
-}
+{ "datasetId": "uuid-of-the-dataset" }
 ```
 
-**Response:**
+**Response (201):**
 ```json
-{
-  "success": true,
-  "data": {
-    "sessionId": "dodo_sess_xxxx",
-    "checkoutUrl": "https://checkout.dodopayments.com/session/dodo_sess_xxxx"
-  }
-}
+{ "success": true, "data": { "checkoutUrl": "https://checkout.dodopayments.com/...", "orderId": "our-order-uuid" } }
 ```
 
-**Server-side steps:**
-1. Verify user is authenticated (Supabase session)
-2. Look up dataset price
-3. Create an `Order` in DB with `status: "pending"` and `dodoSessionId` saved
-4. Call DodoPayments API to create checkout session
-5. Return `checkoutUrl` to redirect user
+**Server-side steps (see `src/app/api/v1/checkout/route.ts`):**
+1. `getSessionUser` → **401** if no session.
+2. Validate body with `createCheckoutSchema` → **400** on failure.
+3. Look up the dataset from **our** DB (price/currency/`dodoProductId`) — the client-shown price is never trusted. **404** if missing; **400** if it has no `dodoProductId` (not purchasable yet).
+4. `findPaidOrder` → **409** "You already own this dataset."
+5. Create a `pending` Order (amount/currency snapshotted from the dataset).
+6. `createCheckoutSession` with `metadata.orderId` so the webhook can find its way back; `return_url` = `/checkout/success?orderId=…`.
+7. Save `dodoSessionId` on the Order, return `checkoutUrl`. **502** if Dodo returns no URL; **500** on other errors.
 
 ---
 
-## POST /api/webhooks/dodo _(Epic 3 — Future)_
+## POST /api/v1/webhooks/dodo ✅ _(built — supersedes the old `/api/webhooks/dodo`)_
 
-Receives payment confirmation from DodoPayments after a successful payment.
+Receives payment confirmation from Dodo. Signature verification + payload validation are handled by the `@dodopayments/nextjs` `Webhooks()` adapter (**401** bad signature, **400** malformed). Handlers: `payment.succeeded` → `markOrderPaid`, `payment.failed` → `markOrderFailed`, `product.updated` → `syncDatasetFromDodoProduct`. Requires `DODO_PAYMENTS_WEBHOOK_KEY` (route 500s at load if empty). Full detail in [../dodopayments.md](../dodopayments.md).
+
+<details><summary>Historical draft payload (from the original Epic-3 plan)</summary>
 
 **Webhook payload (fired by Dodo):**
 ```json
@@ -391,29 +380,29 @@ Receives payment confirmation from DodoPayments after a successful payment.
 }
 ```
 
-**Server-side steps:**
-1. Verify webhook signature using Dodo's signing secret (prevent spoofing)
+Historical draft steps (note: the real webhook does **not** create a Download row — that happens at download time):
+1. Verify webhook signature using Dodo's signing secret
 2. Find the `Order` by `orderId` from `metadata`
 3. Update Order → `status: "paid"`, `dodoPaymentId`, `paidAt`
-4. Create a `Download` record for the user
-5. Return `200 OK` to Dodo (otherwise Dodo retries)
+4. Return `200 OK` to Dodo (otherwise Dodo retries)
+
+</details>
 
 ---
 
-## GET /api/download/[id] _(Epic 6 — Future)_
+## GET /api/v1/datasets/[id]/download ✅ _(built — supersedes the old `/api/download/[id]`)_
 
-Generates a signed URL for a purchased dataset binary. Only accessible after verifying a `paid` order.
+Serves the paid dataset binary. Gated on **both** a valid session **and** a `paid` Order for this user+dataset.
 
-```ts
-// lib/storage.ts
-export async function getSignedDownloadUrl(path: string, expiresInSeconds = 3600) {
-  const { data, error } = await supabase.storage
-    .from('dataset-binaries')
-    .createSignedUrl(path, expiresInSeconds)
-  if (error) throw error
-  return data.signedUrl
-}
-```
+**Flow (`src/app/api/v1/datasets/[id]/download/route.ts`):**
+1. `getSessionUser` → **401** if no session.
+2. Load dataset → **404** if missing, **404** if it has no `binaryUrl`.
+3. `findPaidOrder(user.id, id)` → **403** "Purchase this dataset to download it." if none.
+4. `createSignedDownloadUrl('binary', dataset.binaryUrl, 60)` — a **60-second** signed URL for the private `dataset-binaries` object (`binaryUrl` holds the storage *path*, not a URL).
+5. Write a `Download` audit row with the buyer's real IP (first hop of `x-forwarded-for`). An audit-write failure is logged but **never blocks** the download.
+6. **302 redirect** the browser to the signed URL.
+
+**Companion:** `GET /api/v1/datasets/[id]/sample` — login-only (no paid Order needed); redirects to the public `sample_url`. Samples are free previews.
 
 ---
 
@@ -434,8 +423,8 @@ export async function getSignedDownloadUrl(path: string, expiresInSeconds = 3600
 |---|---|
 | Register | Supabase Auth email/password signup → insert into `users` table |
 | Login | Supabase Auth → session cookie set → redirect via `?next=` param |
-| Profile | `/profile/user` — order history, downloads, issues, meets |
-| Route Guard | `middleware.ts` checks session on every request to `/profile/*`, `/account/*`, `/admin/*` |
+| Profile | `/profile` — order history, downloads, saved datasets |
+| Route Guard | `proxy.ts` (the renamed middleware) checks the session on every request to `/account/*` and `/admin/*`, and redirects to `/login?next=…` if absent |
 
 Auth flow:
 ```
@@ -445,10 +434,11 @@ supabase.auth.signInWithPassword()
   ↓
 Supabase sets session cookie
   ↓
-middleware.ts reads cookie on every subsequent request
+proxy.ts reads cookie on every subsequent request (getClaims — local JWT check)
   ↓
-Protected routes: redirect to /login if no session
+Protected routes (/account/*, /admin/*): redirect to /login if no session
 ```
+> See [../auth.md](../auth.md) for the full session lifecycle, the modal-based auth UI, and Google OAuth.
 
 ### Epic 2 — Search & Discovery ✅
 

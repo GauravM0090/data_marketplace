@@ -63,8 +63,9 @@ SUPABASE_SERVICE_ROLE_KEY=eyJ...         # server-only — never expose to clien
 DATABASE_URL=postgresql://postgres.xxxx:password@aws-0-region.pooler.supabase.com:6543/postgres?pgbouncer=true
 
 # Dodo Payments — use sandbox/test keys
-DODO_API_KEY=dodo_test_...
-DODO_WEBHOOK_SECRET=whsec_test_...
+DODO_PAYMENTS_API_KEY=dodo_test_...
+DODO_PAYMENTS_ENVIRONMENT=test_mode
+DODO_PAYMENTS_WEBHOOK_KEY=whsec_test_...
 
 # Email
 SMTP_HOST=smtp.yourmailprovider.com
@@ -94,8 +95,9 @@ SUPABASE_SERVICE_ROLE_KEY=eyJ...
 DATABASE_URL=postgresql://postgres.yyyy:password@aws-0-region.pooler.supabase.com:6543/postgres?pgbouncer=true
 
 # Dodo Payments — live keys
-DODO_API_KEY=dodo_live_...
-DODO_WEBHOOK_SECRET=whsec_live_...
+DODO_PAYMENTS_API_KEY=dodo_live_...
+DODO_PAYMENTS_ENVIRONMENT=live_mode
+DODO_PAYMENTS_WEBHOOK_KEY=whsec_live_...
 
 # Email — production SMTP
 SMTP_HOST=smtp.yourmailprovider.com
@@ -125,8 +127,9 @@ Every variable changes. Here is what each change means in practice:
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Dev anon key | Prod anon key | Keys are project-scoped |
 | `SUPABASE_SERVICE_ROLE_KEY` | Dev service role key | Prod service role key | Keys are project-scoped |
 | `DATABASE_URL` | Dev pooler URL | Prod pooler URL | Different DB instances |
-| `DODO_API_KEY` | Sandbox key | Live key | Test vs real payments |
-| `DODO_WEBHOOK_SECRET` | Sandbox webhook secret | Live webhook secret | Different Dodo environments |
+| `DODO_PAYMENTS_API_KEY` | Sandbox key | Live key | Test vs real payments |
+| `DODO_PAYMENTS_ENVIRONMENT` | `test_mode` | `live_mode` | Points the SDK at sandbox vs live |
+| `DODO_PAYMENTS_WEBHOOK_KEY` | Sandbox webhook secret | Live webhook secret | Different Dodo environments |
 | `NEXT_PUBLIC_APP_URL` | `http://localhost:3000` | `https://yourdomain.com` | Used in auth redirects, OG tags, email links |
 | `LOG_LEVEL` | `debug` | `info` | Verbose locally, quiet in production |
 
@@ -166,9 +169,12 @@ Dodo Payments uses separate API keys for sandbox and live. The key value alone d
 
 ```ts
 // lib/dodo.ts
-const dodo = new DodoClient({ apiKey: process.env.DODO_API_KEY })
-// sandbox key → hits Dodo sandbox
-// live key    → hits Dodo production
+const dodo = new DodoPayments({
+  bearerToken: process.env.DODO_PAYMENTS_API_KEY,
+  environment: process.env.DODO_PAYMENTS_ENVIRONMENT ?? 'test_mode',
+})
+// DODO_PAYMENTS_ENVIRONMENT=test_mode → Dodo sandbox
+// DODO_PAYMENTS_ENVIRONMENT=live_mode → Dodo production
 ```
 
 ### 4. App URL — used in several places
